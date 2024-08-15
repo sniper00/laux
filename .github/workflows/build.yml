@@ -49,3 +49,5 @@ jobs:
           tag_name: release
           fail_on_unmatched_files: true
           files: '${{  steps.zip.outputs.output }}'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,57 @@
+name: release
+permissions:
+  contents: write
+on:
+  schedule:
+    - cron: '0 10 * * 1-5'
+  push:
+    paths:
+      - '.github/workflows/release.yml'
+jobs:
+  windows-vs2022:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Setup premake
+        uses: abel0b/setup-premake@v2.2
+        with:
+          version: 5.0.0-beta1
+      - name: setup msbuild
+        uses: microsoft/setup-msbuild@v1.1
+      - name: Build
+        run: |
+          cd cpp
+          premake5 vs2022
+          msbuild /p:Configuration=Release luax.sln
+      - name: Build Rust Project
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - run: |
+          cd rust
+          cargo build --release
+      - name: Copy DLLs
+        run: |
+          xcopy .\cpp\build\bin\Release\*.dll .\bin\Windows\ /Y /F
+          if (Test-Path .\bin\Windows\lua.dll) {
+              Remove-Item .\bin\Windows\lua.dll
+              Write-Output "Deleted file: .\bin\Windows\lua.dll"
+          }
+      - uses: actboy168/action-zip@main
+        id: zip
+        with:
+          name: laux-windows
+          path: |
+            bin/
+            README.md
+      - uses: softprops/action-gh-release@v1
+        with:
+          name: release
+          tag_name: release
+          fail_on_unmatched_files: true
+          files: '${{  steps.zip.outputs.output }}'

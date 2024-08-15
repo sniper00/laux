@@ -9,7 +9,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          submodules: true
+          submodules: recursive
       - name: Setup premake
         uses: abel0b/setup-premake@v2.2
         with:

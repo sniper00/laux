@@ -31,9 +31,13 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - run: |
-          cd rust
-          cargo build --release
+      - name: Copy DLLs
+        run: |
+          mkdir -p bin/Linux
+          cp -f cpp/build/bin/Release/*.so bin/Linux
+          for file in rust/target/release/lib*.so; do
+            cp -f "$file" "bin/Linux/$(basename "$file" | sed 's/^lib//')"
+          done
       - uses: actboy168/action-zip@main
         id: zip
         with:

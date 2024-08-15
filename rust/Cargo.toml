@@ -1,0 +1,23 @@
+[workspace.lints.rust]
+# unsafe_code = "forbid"
+# unused = "allow" # For experimental dev.
+
+[workspace]
+resolver = "2"
+members = [
+    # -- Application Libraries
+    "crates/libs/lib-lua-sys",
+    "crates/libs/lib-common-sys",
+
+    # -- Executable
+    "crates/libs/excel",
+
+    # -- Tools
+    # "crates/tools/gen-key",    
+]
+
+[profile.release]
+# strip = true
+# codegen-units = 1
+# lto = true
+# panic = "abort"

@@ -1,0 +1,3 @@
+[submodule "3rd/math3d"]
+	path = 3rd/math3d
+	url = https://github.com/cloudwu/math3d.git

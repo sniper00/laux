@@ -1,0 +1,21 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+*.db
+*.opendb
+*.dll
+*.exp
+*.ilk
+*.lib
+*.pdb
+*.exe
+*.obj
+*.log
+*.tlog
+*.idb
+*.so
+.vs/
+.vscode/
+cpp/build/bin/
+cpp/build/obj/
+rust/target/

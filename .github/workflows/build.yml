@@ -1,12 +1,7 @@
 name: release
-permissions:
-  contents: write
 on:
-  schedule:
-    - cron: '0 10 * * 1-5'
-  push:
-    paths:
-      - '.github/workflows/release.yml'
+  workflow_dispatch: {}
+  
 jobs:
   windows-vs2022:
     runs-on: windows-latest

@@ -1,4 +1,4 @@
-name: build
+name: build-windows
 permissions:
   contents: write
 on:

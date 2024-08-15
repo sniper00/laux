@@ -1,4 +1,4 @@
-name: build
+name: build-linux
 permissions:
   contents: write
 on:
@@ -23,14 +23,17 @@ jobs:
           version: 5.0.0-beta1
       - name: Build
         run: |
-            chmod +x build.sh
-            ./build.sh
+            cd cpp
+            make config=release -j4
       - name: Build Rust Project
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
+      - run: |
+          cd rust
+          cargo build --release
       - name: Copy DLLs
         run: |
           mkdir -p bin/Linux

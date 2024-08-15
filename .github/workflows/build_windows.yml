@@ -1,7 +1,12 @@
-name: release
+name: build
 permissions:
   contents: write
 on:
+  schedule:
+    - cron: '0 10 * * 1-5'
+  push:
+    paths:
+      - '.github/workflows/build_windows.yml'
   workflow_dispatch: {}
 
 jobs:
@@ -47,8 +52,8 @@ jobs:
             README.md
       - uses: softprops/action-gh-release@v1
         with:
-          name: release
-          tag_name: release
+          name: build
+          tag_name: build
           fail_on_unmatched_files: true
           files: '${{  steps.zip.outputs.output }}'
         env:

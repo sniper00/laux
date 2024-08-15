@@ -39,6 +39,7 @@ jobs:
       - name: Copy DLLs
         run: |
           xcopy .\cpp\build\bin\Release\*.dll .\bin\Windows\ /Y /F
+          xcopy .\rust\target\release\*.dll .\bin\Windows\ /Y /F
           if (Test-Path .\bin\Windows\lua.dll) {
               Remove-Item .\bin\Windows\lua.dll
               Write-Output "Deleted file: .\bin\Windows\lua.dll"

@@ -1,7 +1,7 @@
 name: release
 on:
   workflow_dispatch: {}
-  
+
 jobs:
   windows-vs2022:
     runs-on: windows-latest
@@ -19,8 +19,7 @@ jobs:
       - name: Build
         run: |
           cd cpp
-          premake5 vs2022
-          msbuild /p:Configuration=Release luax.sln
+          msbuild /p:Configuration=Release /m luax.sln
       - name: Build Rust Project
         uses: actions-rs/toolchain@v1
         with:

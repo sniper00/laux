@@ -48,11 +48,11 @@ REM Check if cargo command exists
 where cargo >nul 2>nul
 if %ERRORLEVEL% NEQ 1 (
   cargo build --release
-  xcopy .\target\release\*.dll .\bin\Windows\ /Y /F
+  xcopy .\target\release\*.dll ..\bin\Windows\ /Y /F
 ) else (
   echo "WARNING: cargo command not found. Skipping Rust build."
 )
-
 popd
+
 
 pause

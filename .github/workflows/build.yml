@@ -1,4 +1,4 @@
-name: build-windows
+name: build
 permissions:
   contents: write
 on:
@@ -6,7 +6,7 @@ on:
     - cron: '0 10 * * 1-5'
   push:
     paths:
-      - '.github/workflows/build_windows.yml'
+      - '.github/workflows/build.yml'
   workflow_dispatch: {}
 
 jobs:
@@ -75,6 +75,52 @@ jobs:
         id: zip
         with:
           name: laux-windows
+          path: |
+            bin/
+            README.md
+      - uses: softprops/action-gh-release@v1
+        with:
+          name: build
+          tag_name: build
+          fail_on_unmatched_files: true
+          files: '${{  steps.zip.outputs.output }}'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  ubuntu-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Setup premake
+        uses: abel0b/setup-premake@v2.2
+        with:
+          version: 5.0.0-beta1
+      - name: Build
+        run: |
+            cd cpp
+            make config=release -j4
+      - name: Build Rust Project
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - run: |
+          cd rust
+          cargo build --release
+      - name: Copy DLLs
+        run: |
+          mkdir -p bin/Linux
+          cp -f cpp/build/bin/Release/*.so bin/Linux
+          for file in rust/target/release/lib*.so; do
+            cp -f "$file" "bin/Linux/$(basename "$file" | sed 's/^lib//')"
+          done
+      - uses: actboy168/action-zip@main
+        id: zip
+        with:
+          name: laux-linux
           path: |
             bin/
             README.md

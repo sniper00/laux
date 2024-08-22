@@ -30,22 +30,6 @@ workspace "luax"
     filter { "system:macosx" }
         warnings "High"
 
-if os.host() == "windows" then
-    project "lua"
-        location "build/projects/%{prj.name}"
-        objdir "build/obj/%{prj.name}/%{cfg.buildcfg}"
-        targetdir "build/bin/%{cfg.buildcfg}"
-        kind "SharedLib"
-        language "C"
-        includedirs {"./lua"}
-        files {"./lua/onelua.c"}
-        defines {"MAKE_LIB"}
-        staticruntime "off"
-        filter { "system:windows" }
-            defines {"LUA_BUILD_AS_DLL"}
-            disablewarnings { "4244","4324","4702","4310", "4701"}
-end
-
 --[[
     lua C/C++模块
     @dir： 模块源文件所在路径，相对于当前目录的路径
@@ -68,7 +52,7 @@ local function add_lua_module(dir, name, normaladdon, windowsaddon, linuxaddon, 
         targetdir "build/bin/%{cfg.buildcfg}"
         language "C"
         kind "SharedLib"
-        includedirs {"./", "./","./lua"}
+        includedirs {"./", "./","../3rd/moon/third/lua/"}
         files { dir.."/*.h",dir.."/*.hpp", dir.."/*.c",dir.."/*.cpp"}
 
         defines{"SOL_ALL_SAFETIES_ON"}
@@ -78,6 +62,7 @@ local function add_lua_module(dir, name, normaladdon, windowsaddon, linuxaddon, 
         end
 
         filter { "system:windows" }
+            libdirs {"../3rd/moon/build/bin/Release"}
             links{"lua"}
             defines{"LUA_BUILD_AS_DLL"}
             if type(windowsaddon)=="function" then

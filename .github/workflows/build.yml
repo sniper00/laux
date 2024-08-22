@@ -1,4 +1,4 @@
-name: build
+name: prebuild
 permissions:
   contents: write
 on:
@@ -6,7 +6,7 @@ on:
     - cron: '0 10 * * 1-5'
   push:
     paths:
-      - '.github/workflows/build.yml'
+      - '.github/workflows/prebuild.yml'
   workflow_dispatch: {}
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
             repo: context.repo.repo,
           });
           for (const release of releases.data) {
-            if (release.tag_name === 'build') {
+            if (release.tag_name === 'prebuilt') {
               await github.rest.repos.deleteRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -33,7 +33,7 @@ jobs:
             await github.rest.git.deleteRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              ref: `tags/build`,
+              ref: `tags/prebuilt`,
             });
           } catch (error) {}
   windows-vs2022:
@@ -52,7 +52,12 @@ jobs:
         uses: microsoft/setup-msbuild@v1.1
       - name: Build
         run: |
+          cd 3rd/moon
+          premake5 vs2022
+          msbuild /m Server.sln /p:configuration="release"
+          cd ../..
           cd cpp
+          premake5 vs2022
           msbuild /p:Configuration=Release /m luax.sln
       - name: Build Rust Project
         uses: actions-rs/toolchain@v1
@@ -65,23 +70,32 @@ jobs:
           cargo build --release
       - name: Copy DLLs
         run: |
-          xcopy .\cpp\build\bin\Release\*.dll .\bin\Windows\ /Y /F
-          xcopy .\rust\target\release\*.dll .\bin\Windows\ /Y /F
-          if (Test-Path .\bin\Windows\lua.dll) {
-              Remove-Item .\bin\Windows\lua.dll
-              Write-Output "Deleted file: .\bin\Windows\lua.dll"
-          }
+          xcopy .\cpp\build\bin\Release\*.dll .\clib\ /Y /F
+          xcopy .\rust\target\release\*.dll .\clib\ /Y /F
+          xcopy .\3rd\moon\lualib .\lualib /E /I /Y
+          xcopy .\3rd\moon\service .\service /E /I /Y
+          xcopy .\3rd\moon\example .\example /E /I /Y
+          xcopy .\3rd\moon\test .\test /E /I /Y
+          xcopy .\3rd\moon\moon.exe .\ /Y /F
+          xcopy .\3rd\moon\lua.dll .\ /Y /F
+          xcopy .\3rd\moon\README.md .\ /Y /F
       - uses: actboy168/action-zip@main
         id: zip
         with:
           name: laux-windows
           path: |
-            bin/
+            clib/
+            lualib/
+            service/
+            example/
+            test/
+            moon.exe
+            lua.dll
             README.md
       - uses: softprops/action-gh-release@v1
         with:
-          name: build
-          tag_name: build
+          name: prebuilt
+          tag_name: prebuilt
           fail_on_unmatched_files: true
           files: '${{  steps.zip.outputs.output }}'
         env:
@@ -99,7 +113,12 @@ jobs:
           version: 5.0.0-beta1
       - name: Build
         run: |
+            cd 3rd/moon
+            premake5 gmake
+            make config=release -j4
+            cd ../..
             cd cpp
+            premake5 gmake
             make config=release -j4
       - name: Build Rust Project
         uses: actions-rs/toolchain@v1
@@ -112,22 +131,33 @@ jobs:
           cargo build --release
       - name: Copy DLLs
         run: |
-          mkdir -p bin/Linux
-          cp -f cpp/build/bin/Release/*.so bin/Linux
+          mkdir -p clib
+          cp -f cpp/build/bin/Release/*.so clib
           for file in rust/target/release/lib*.so; do
-            cp -f "$file" "bin/Linux/$(basename "$file" | sed 's/^lib//')"
+            cp -f "$file" "clib/$(basename "$file" | sed 's/^lib//')"
           done
+          cp -rf 3rd/moon/lualib/* lualib
+          cp -rf 3rd/moon/service/* service
+          cp -rf 3rd/moon/example/* example
+          cp -rf 3rd/moon/test/* test
+          cp -rf 3rd/moon/moon .
+          cp -rf 3rd/moon/README.md .
       - uses: actboy168/action-zip@main
         id: zip
         with:
           name: laux-linux
           path: |
-            bin/
+            clib/
+            lualib/
+            service/
+            example/
+            test/
+            moon
             README.md
       - uses: softprops/action-gh-release@v1
         with:
-          name: build
-          tag_name: build
+          name: prebuilt
+          tag_name: prebuilt
           fail_on_unmatched_files: true
           files: '${{  steps.zip.outputs.output }}'
         env:

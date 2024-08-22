@@ -128,7 +128,7 @@ jobs:
           cargo build --release
       - name: Copy DLLs
         run: |
-          mkdir -p clib
+          mkdir -p clib lualib service example test
           cp -f cpp/build/bin/Release/*.so clib
           for file in rust/target/release/lib*.so; do
             cp -f "$file" "clib/$(basename "$file" | sed 's/^lib//')"

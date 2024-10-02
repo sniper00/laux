@@ -10,7 +10,7 @@ members = [
     "crates/libs/lib-common-sys",
 
     # -- Executable
-    "crates/libs/excel",
+    "crates/libs/excel", "crates/libs/httpc",
 
     # -- Tools
     # "crates/tools/gen-key",    

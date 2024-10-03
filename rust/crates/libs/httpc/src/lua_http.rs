@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use lib_lua::{self, cstr, ffi, ffi::luaL_Reg, laux, lreg, lreg_null, lua_rawsetfield};
 use reqwest::ClientBuilder;
 use reqwest::{header::HeaderMap, Method};
-use std::{error::Error, ffi::c_int, ffi::c_void, str::FromStr};
+use std::{error::Error, ffi::c_int, str::FromStr};
 use std::{
     sync::{atomic::AtomicI64, mpsc},
     time::Duration,
@@ -55,6 +55,7 @@ struct HttpResponse {
 }
 
 type Message = (i64, Result<HttpResponse, String>);
+type ChannelUserData = *mut Channel;
 
 struct Channel {
     receiver: mpsc::Receiver<Message>,
@@ -174,10 +175,7 @@ extern "C-unwind" fn lua_http_request(state: *mut ffi::lua_State) -> c_int {
         proxy: laux::opt_field(state, 1, "proxy").unwrap_or_default(),
     };
 
-    let channel = unsafe {
-        let p = ffi::lua_touserdata(state, ffi::lua_upvalueindex(1));
-        &mut *(p as *mut Channel)
-    };
+    let channel = get_channel(state, ffi::lua_upvalueindex(1));
 
     let sender = channel.sender.clone();
 
@@ -245,10 +243,7 @@ extern "C-unwind" fn lua_http_form_urldecode(state: *mut ffi::lua_State) -> c_in
 }
 
 extern "C-unwind" fn lua_http_poll(state: *mut ffi::lua_State) -> c_int {
-    let channel = unsafe {
-        let p = ffi::lua_touserdata(state, ffi::lua_upvalueindex(1));
-        &mut *(p as *mut Channel)
-    };
+    let channel = get_channel(state, ffi::lua_upvalueindex(1));
 
     match channel.receiver.try_recv() {
         Ok((session, result)) => match result {
@@ -307,6 +302,23 @@ extern "C-unwind" fn lua_http_poll(state: *mut ffi::lua_State) -> c_int {
     }
 }
 
+fn get_channel(state: *mut ffi::lua_State, index: i32) -> &'static mut Channel {
+    unsafe {
+        let ud = ffi::lua_touserdata(state, index) as *mut ChannelUserData;
+        &mut *(*ud)
+    }
+}
+
+// The __gc method to release the channel pointer
+unsafe extern "C-unwind" fn lua_channel_gc(state: *mut ffi::lua_State) -> c_int {
+    let ud = ffi::lua_touserdata(state, 1) as *mut ChannelUserData;
+    if !ud.is_null() && !(*ud).is_null() {
+        let _ = Box::from_raw(*ud); // This will drop the Box and release the memory
+        *ud = std::ptr::null_mut();
+    }
+    0
+}
+
 #[no_mangle]
 pub unsafe extern "C-unwind" fn luaopen_httpc(state: *mut ffi::lua_State) -> c_int {
     let l = [
@@ -321,9 +333,16 @@ pub unsafe extern "C-unwind" fn luaopen_httpc(state: *mut ffi::lua_State) -> c_i
     let channel = Box::new(Channel { sender, receiver });
 
     ffi::lua_createtable(state, 0, l.len() as c_int);
-
-    ffi::lua_pushlightuserdata(state, Box::into_raw(channel) as *mut c_void);
+    // Create a new userdata and set its metatable
+    let ud =
+        ffi::lua_newuserdata(state, std::mem::size_of::<ChannelUserData>()) as *mut ChannelUserData;
+    *ud = Box::into_raw(channel);
+    // Create a metatable for the userdata
+    if ffi::luaL_newmetatable(state, cstr!("HTTP_CHANNEL_MT")) > 0 {
+        ffi::lua_pushcfunction(state, lua_channel_gc);
+        ffi::lua_setfield(state, -2, cstr!("__gc"));
+    }
+    ffi::lua_setmetatable(state, -2);
     ffi::luaL_setfuncs(state, l.as_ptr(), 1);
-
     1
 }

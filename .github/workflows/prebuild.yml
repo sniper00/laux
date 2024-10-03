@@ -159,3 +159,65 @@ jobs:
           files: '${{  steps.zip.outputs.output }}'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  macos-latest:
+    runs-on: macos-latest
+    needs: init
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Installing premake5
+        run: |
+          brew install premake
+      - name: Build
+        run: |
+            cd 3rd/moon
+            premake5 gmake --cc=clang
+            make config=release -j4
+            cd ../..
+            cd cpp
+            premake5 gmake --cc=clang
+            make config=release -j4
+      - name: Build Rust Project
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - run: |
+          cd rust
+          cargo build --release
+      - name: Copy DLLs
+        run: |
+          mkdir -p clib lualib service example test
+          cp -f cpp/build/bin/Release/*.dylib clib
+          for file in rust/target/release/lib*.dylib; do
+            cp -f "$file" "clib/$(basename "$file" | sed 's/^lib//')"
+          done
+          cp -rf 3rd/moon/lualib/* lualib
+          cp -rf 3rd/moon/service/* service
+          cp -rf 3rd/moon/example/* example
+          cp -rf 3rd/moon/test/* test
+          cp -rf 3rd/moon/moon .
+          cp -rf 3rd/moon/README.md .
+      - uses: actboy168/action-zip@main
+        id: zip
+        with:
+          name: laux-macos
+          path: |
+            clib/
+            lualib/
+            service/
+            example/
+            test/
+            moon
+            README.md
+      - uses: softprops/action-gh-release@v1
+        with:
+          name: prebuilt
+          tag_name: prebuilt
+          fail_on_unmatched_files: true
+          files: '${{  steps.zip.outputs.output }}'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

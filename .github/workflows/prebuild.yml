@@ -173,6 +173,7 @@ jobs:
       - name: Build
         run: |
             cd 3rd/moon
+            git checkout master
             premake5 gmake --cc=clang
             make config=release -j4
             cd ../..

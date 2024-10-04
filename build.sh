@@ -43,6 +43,7 @@ cd ..
 
 # Copy the built shared objects to the target directory
 cp -f ./cpp/build/bin/Release/*.so "$dir"
+cp -f ./cpp/build/bin/Release/*.dylib "$dir"
 
 # Check if cargo command exists
 if command -v cargo &> /dev/null; then
@@ -51,6 +52,10 @@ if command -v cargo &> /dev/null; then
   cd ..
 
   for file in ./rust/target/release/lib*.so; do
+    cp -f "$file" "$dir$(basename "$file" | sed 's/^lib//')"
+  done
+
+  for file in ./rust/target/release/lib*.dylib; do
     cp -f "$file" "$dir$(basename "$file" | sed 's/^lib//')"
   done
 else

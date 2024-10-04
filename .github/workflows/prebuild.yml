@@ -51,6 +51,7 @@ jobs:
       - name: Build
         run: |
           cd 3rd/moon
+          git checkout master
           premake5 vs2022
           msbuild /m Server.sln /p:configuration="release"
           cd ../..
@@ -111,6 +112,7 @@ jobs:
       - name: Build
         run: |
             cd 3rd/moon
+            git checkout master
             premake5 gmake
             make config=release -j4
             cd ../..

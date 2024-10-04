@@ -60,10 +60,9 @@ local function add_lua_module(dir, name, normaladdon, windowsaddon, linuxaddon, 
         if type(normaladdon)=="function" then
             normaladdon()
         end
-
+        libdirs {"../3rd/moon/build/bin/Release"}
+        links{"lua"}
         filter { "system:windows" }
-            libdirs {"../3rd/moon/build/bin/Release"}
-            links{"lua"}
             defines{"LUA_BUILD_AS_DLL"}
             if type(windowsaddon)=="function" then
                 windowsaddon()
@@ -86,6 +85,7 @@ add_lua_module("./sproto", "sproto")
 add_lua_module("./lpeg", "lpeg")
 add_lua_module("../3rd/math3d", "math3d", function ()
     includedirs("../3rd/math3d/glm")
+    language "C++"
 end, function ()
     defines{"GLM_ENABLE_EXPERIMENTAL","GLM_FORCE_QUAT_DATA_XYZW","_USE_MATH_DEFINES"}
 end)

@@ -140,6 +140,7 @@ jobs:
           cp -rf 3rd/moon/example/* example
           cp -rf 3rd/moon/test/* test
           cp -rf 3rd/moon/moon .
+          cp -rf 3rd/moon/liblua.so .
           cp -rf 3rd/moon/README.md .
       - uses: actboy168/action-zip@main
         id: zip
@@ -203,6 +204,7 @@ jobs:
           cp -rf 3rd/moon/example/* example
           cp -rf 3rd/moon/test/* test
           cp -rf 3rd/moon/moon .
+          cp -rf 3rd/moon/liblua.dylib .
           cp -rf 3rd/moon/README.md .
       - uses: actboy168/action-zip@main
         id: zip

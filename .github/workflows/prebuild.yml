@@ -153,6 +153,7 @@ jobs:
             example/
             test/
             moon
+            liblua.so
             README.md
       - uses: softprops/action-gh-release@v1
         with:
@@ -217,6 +218,7 @@ jobs:
             example/
             test/
             moon
+            liblua.dylib
             README.md
       - uses: softprops/action-gh-release@v1
         with:

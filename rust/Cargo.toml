@@ -8,12 +8,8 @@ members = [
     # -- Application Libraries
     "crates/libs/lib-lua-sys",
     "crates/libs/lib-common-sys",
-
-    # -- Executable
-    "crates/libs/excel", "crates/libs/httpc",
-
-    # -- Tools
-    # "crates/tools/gen-key",    
+    "crates/libs/lib-core",
+    "crates/libs/lib-lualib", 
 ]
 
 [profile.release]

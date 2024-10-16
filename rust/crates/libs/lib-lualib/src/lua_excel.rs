@@ -155,7 +155,7 @@ extern "C-unwind" fn lua_excel_read(state: *mut ffi::lua_State) -> c_int {
 }
 
 #[no_mangle]
-pub unsafe extern "C-unwind" fn luaopen_excel(state: *mut ffi::lua_State) -> c_int {
+pub unsafe extern "C-unwind" fn luaopen_rust_excel(state: *mut ffi::lua_State) -> c_int {
     let l = [lreg!("read", lua_excel_read), lreg_null!()];
 
     ffi::lua_createtable(state, 0, l.len() as c_int);

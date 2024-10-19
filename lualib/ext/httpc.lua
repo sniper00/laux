@@ -1,37 +1,31 @@
 ---@diagnostic disable: inject-field
 local moon = require "moon"
 local json = require "json"
-local httpc = require "httpc"
+local httpc = require "rust.httpc"
+local core = require "http.core"
 
-local coroutine = coroutine
-local debug = debug
+local protocol_type = 15
+local callback = _G['send_message']
 
-local requests = {}
-moon.async(function()
-    while true do
-        local session, data = httpc.poll()
-        if not session then
-            moon.sleep(10)
-        else
-            local co = requests[session]
-            requests[session] = nil
-            moon.timeout(0, function()
-                local ok, err = coroutine.resume(co, data)
-                if not ok then
-                    err = debug.traceback(co, tostring(err))
-                    coroutine.close(co)
-                    moon.error(err)
-                end
-            end)
-        end
+moon.register_protocol {
+    name = "http",
+    PTYPE = protocol_type,
+    pack = function(...) return ... end,
+    unpack = moon.tostring,
+}
+
+---@return HttpResponse
+local function parse_raw_response(raw_response, err)
+    if not raw_response then
+        return { status_code = -1, content = err }
     end
-end)
 
-local function request(opts)
-    local session, err = httpc.request(opts)
-    local co = coroutine.running()
-    requests[session] = co
-    return coroutine.yield()
+    local header_len = string.unpack("<I", raw_response)
+    local raw_header = string.sub(raw_response, 5, 4 + header_len)
+    local response = core.parse_response(raw_header)
+    response.body = string.sub(raw_response, 5 + header_len)
+
+    return response
 end
 
 ---@return table
@@ -52,9 +46,11 @@ local client = {}
 ---@return HttpResponse
 function client.get(url, opts)
     opts = opts or {}
+    opts.owner = moon.id
+    opts.session = moon.next_sequence()
     opts.url = url
     opts.method = "GET"
-    return request(opts)
+    return parse_raw_response(moon.wait(httpc.request(opts, protocol_type, callback)))
 end
 
 local json_content_type = { ["Content-Type"] = "application/json" }
@@ -65,6 +61,8 @@ local json_content_type = { ["Content-Type"] = "application/json" }
 ---@return HttpResponse
 function client.post_json(url, data, opts)
     opts = opts or {}
+    opts.owner = moon.id
+    opts.session = moon.next_sequence()
     if not opts.headers then
         opts.headers = json_content_type
     else
@@ -77,7 +75,7 @@ function client.post_json(url, data, opts)
     opts.method = "POST"
     opts.body = json.encode(data)
 
-    local res = request(opts)
+    local res = parse_raw_response(moon.wait(httpc.request(opts, protocol_type, callback)))
 
     if res.status_code == 200 then
         res.body = tojson(res)
@@ -91,10 +89,12 @@ end
 ---@return HttpResponse
 function client.post(url, data, opts)
     opts = opts or {}
+    opts.owner = moon.id
+    opts.session = moon.next_sequence()
     opts.url = url
     opts.body = data
     opts.method = "POST"
-    return request(opts)
+    return parse_raw_response(moon.wait(httpc.request(opts, protocol_type, callback)))
 end
 
 local form_headers = { ["Content-Type"] = "application/x-www-form-urlencoded" }
@@ -105,6 +105,8 @@ local form_headers = { ["Content-Type"] = "application/x-www-form-urlencoded" }
 ---@return HttpResponse
 function client.post_form(url, data, opts)
     opts = opts or {}
+    opts.owner = moon.id
+    opts.session = moon.next_sequence()
     if not opts.headers then
         opts.headers = form_headers
     else
@@ -122,7 +124,7 @@ function client.post_form(url, data, opts)
     opts.method = "POST"
     opts.body = httpc.form_urlencode(opts.body)
 
-    return request(opts)
+    return parse_raw_response(moon.wait(httpc.request(opts, protocol_type, callback)))
 end
 
 return client

@@ -1,6 +1,6 @@
 [submodule "3rd/math3d"]
 	path = 3rd/math3d
 	url = https://github.com/cloudwu/math3d.git
-[submodule "3rd/moon"]
-	path = 3rd/moon
+[submodule "moon"]
+	path = moon
 	url = https://github.com/sniper00/moon.git

@@ -63,7 +63,7 @@ jobs:
           toolchain: stable
           override: true
       - name: Build
-      - run: |
+        run: |
           publish build
           publish publish
           zip_name=$(ls *.zip)

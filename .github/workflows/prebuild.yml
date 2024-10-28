@@ -55,6 +55,7 @@ jobs:
         with:
           submodules: recursive
       - name: Installing premake5
+        if: runner.os != 'macOS'
         uses: Jarod42/install-premake5@v1
       - name: Build Rust Project
         uses: actions-rs/toolchain@v1

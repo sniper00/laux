@@ -64,8 +64,8 @@ jobs:
           override: true
       - name: Build
         run: |
-          publish build
-          publish publish
+          premake5 build
+          premake5 publish
           zip_name=$(ls *.zip)
           echo "zip_name=$zip_name" >> $GITHUB_ENV
       - uses: softprops/action-gh-release@v2

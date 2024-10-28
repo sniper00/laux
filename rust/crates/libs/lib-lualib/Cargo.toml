@@ -32,3 +32,23 @@ percent-encoding = "2.3.1"
 form_urlencoded = "1.2.1"
 url = "2.5.0"
 hyper = { version = "0.14", features = ["full"] }
+
+# opendal = { version = "0.50.1", features = [
+#   # These are default features before v0.46. TODO: change to optional features
+#   "services-azblob",
+#   "services-azdls",
+#   "services-cos",
+#   "services-fs",
+#   "services-gcs",
+#   "services-ghac",
+#   "services-http",
+#   "services-ipmfs",
+#   "services-memory",
+#   "services-obs",
+#   "services-oss",
+#   "services-s3",
+#   "services-webdav",
+#   "services-webhdfs",
+#   "services-azfile",
+#   "services-mysql"
+# ] }

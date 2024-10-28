@@ -1,5 +1,7 @@
 pub mod lua_excel;
 pub mod lua_http;
+// pub mod lua_opendal;
+pub mod lua_runtime;
 
 use lib_lua::{self, ffi};
 use std::ffi::c_void;

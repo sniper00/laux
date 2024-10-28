@@ -14,8 +14,9 @@
 *.tlog
 *.idb
 *.so
+*.o
+*.d
 .vs/
 .vscode/
-cpp/build/bin/
-cpp/build/obj/
+build/
 rust/target/

@@ -771,3 +771,49 @@ pub fn to_string_unchecked(state: *mut ffi::lua_State, index: i32)-> String{
         }
     }
 }
+
+extern "C-unwind" fn lua_dropuserdata<T>(state: *mut ffi::lua_State)-> c_int {
+    unsafe {
+        let p = ffi::lua_touserdata(state, 1);
+        if p.is_null() {
+            return 0;
+        }
+        let p = p as *mut *mut T;
+        let _ = Box::from_raw(*p);
+    }
+    0
+}
+
+pub fn lua_newuserdata<T>(state: *mut ffi::lua_State, val: T, metaname:*const c_char, lib:&[ffi::luaL_Reg]) -> Option<&T> {
+    unsafe {
+        let p = ffi::lua_newuserdatauv(state, std::mem::size_of::<*const T>(), 0) as *mut *mut T;
+        if p.is_null() {
+            return None;
+        }
+        *p = Box::leak(Box::new(val));
+
+        if ffi::luaL_newmetatable(state, metaname) != 0 {
+            ffi::lua_createtable(state, 0, lib.len() as c_int);
+            ffi::luaL_setfuncs(state, lib.as_ptr(), 0);
+            ffi::lua_setfield(state, -2, cstr!("__index"));
+            ffi::lua_pushcfunction(state, lua_dropuserdata::<T>);
+            ffi::lua_setfield(state, -2, cstr!("__gc"));
+        }
+
+        ffi::lua_setmetatable(state, -2);
+        let p = *p;
+        Some(&*p)
+    }
+}
+
+pub fn lua_touserdata<T>(state: *mut ffi::lua_State, index: i32) -> Option<&'static T> {
+    unsafe {
+        let p = ffi::lua_touserdata(state, index);
+        if p.is_null() {
+            return None;
+        }
+        let p = *(p as *mut *mut T);
+        Some(&*p)
+    }
+}
+

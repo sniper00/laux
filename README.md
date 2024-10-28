@@ -1,16 +1,30 @@
-# laux
-These Lua utility libraries, written in C++ and Rust, are primarily provided as Lua extension libraries for [Moon](https://github.com/sniper00/moon). However, they can also be used elsewhere as they are standard Lua C modules.
+# Moon Extensions
 
-# Use
+This library provides Lua extensions for [Moon](https://github.com/sniper00/moon), implemented in Rust and C/C++. By using Rust, we can leverage its ecosystem, including the `tokio` runtime.
 
-You can directly use the precompiled releases or compile it yourself. To compile on Windows, run `build.bat`. On Linux, run `build.sh`. Then, copy the dynamic libraries from the `bin` directory to your project and set the Lua `package.cpath` accordingly. On Windows, it depends on `lua.dll`. Currently, only Lua 5.4 is supported.
+# Usage
+
+## Option 1: Use Precompiled Releases
+
+You can directly use the precompiled releases.
+
+## Option 2: Manual Compilation
+
+To compile the project, follow these steps:
+
+- [Install Premake5](https://premake.github.io/download).
+- Run `premake5 build`.
+
+After compiling, the `clib` and `lualib` directories will be automatically copied to the moon directory.
 
 # Libraries
 
-## 1. Excel Reader
+## Rust
+
+### 1. Excel Reader
 
 ```lua
-local excel = require "excel"
+local excel = require "rust.excel"
 
 local res = excel.read("example.xlsx")
 
@@ -32,8 +46,21 @@ local res = excel.read("example.xlsx")
 
 ```
 
-## 2. lpeg
+### 2. Https Client
 
-## 3. [math3d](https://github.com/cloudwu/math3d)
+```lua
+    local httpc = require("ext.httpc")
+    local moon = require("moon")
+    moon.async(function()
+        local response = httpc.get("https://bing.com")
+        print(response.status_code==200)
+    end)
+```
 
-## 4. [sproto](https://github.com/cloudwu/sproto)
+## C/Cpp
+
+### 1. lpeg
+
+### 2. [math3d](https://github.com/cloudwu/math3d)
+
+### 3. [sproto](https://github.com/cloudwu/sproto)

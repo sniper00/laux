@@ -36,9 +36,19 @@ jobs:
               ref: `tags/prebuilt`,
             });
           } catch (error) {}
-  windows-vs2022:
+  prebuilt:
     needs: init
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-x86_64
+          - os: ubuntu-latest
+            name: linux-x86_64
+          - os: macos-14
+            name: macos-arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -46,185 +56,23 @@ jobs:
           submodules: recursive
       - name: Installing premake5
         uses: Jarod42/install-premake5@v1
-      - name: setup msbuild
-        uses: microsoft/setup-msbuild@v1.1
-      - name: Build
-        run: |
-          cd 3rd/moon
-          git checkout master
-          premake5 vs2022
-          msbuild /m Server.sln /p:configuration="release"
-          cd ../..
-          cd cpp
-          premake5 vs2022
-          msbuild /p:Configuration=Release /m luax.sln
       - name: Build Rust Project
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-      - run: |
-          cd rust
-          cargo build --release
-      - name: Copy DLLs
-        run: |
-          xcopy .\cpp\build\bin\Release\*.dll .\clib\ /Y /F
-          xcopy .\rust\target\release\*.dll .\clib\ /Y /F
-          xcopy .\3rd\moon\lualib .\lualib /E /I /Y
-          xcopy .\3rd\moon\service .\service /E /I /Y
-          xcopy .\3rd\moon\example .\example /E /I /Y
-          xcopy .\3rd\moon\test .\test /E /I /Y
-          xcopy .\3rd\moon\moon.exe .\ /Y /F
-          xcopy .\3rd\moon\lua.dll .\ /Y /F
-          xcopy .\3rd\moon\README.md .\ /Y /F
-      - uses: actboy168/action-zip@main
-        id: zip
-        with:
-          name: laux-windows
-          path: |
-            clib/
-            lualib/
-            service/
-            example/
-            test/
-            moon.exe
-            lua.dll
-            README.md
-      - uses: softprops/action-gh-release@v1
-        with:
-          name: prebuilt
-          tag_name: prebuilt
-          fail_on_unmatched_files: true
-          files: '${{  steps.zip.outputs.output }}'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  ubuntu-latest:
-    runs-on: ubuntu-latest
-    needs: init
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      - name: Installing premake5
-        uses: Jarod42/install-premake5@v1
       - name: Build
-        run: |
-            cd 3rd/moon
-            git checkout master
-            premake5 gmake
-            make config=release -j4
-            cd ../..
-            cd cpp
-            premake5 gmake
-            make config=release -j4
-      - name: Build Rust Project
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
       - run: |
-          cd rust
-          cargo build --release
-      - name: Copy DLLs
-        run: |
-          mkdir -p clib lualib service example test
-          cp -f cpp/build/bin/Release/*.so clib
-          for file in rust/target/release/lib*.so; do
-            cp -f "$file" "clib/$(basename "$file" | sed 's/^lib//')"
-          done
-          cp -rf 3rd/moon/lualib/* lualib
-          cp -rf 3rd/moon/service/* service
-          cp -rf 3rd/moon/example/* example
-          cp -rf 3rd/moon/test/* test
-          cp -rf 3rd/moon/moon .
-          cp -rf 3rd/moon/liblua.so .
-          cp -rf 3rd/moon/README.md .
-      - uses: actboy168/action-zip@main
-        id: zip
-        with:
-          name: laux-linux
-          path: |
-            clib/
-            lualib/
-            service/
-            example/
-            test/
-            moon
-            liblua.so
-            README.md
-      - uses: softprops/action-gh-release@v1
+          publish build
+          publish publish
+          zip_name=$(ls *.zip)
+          echo "zip_name=$zip_name" >> $GITHUB_ENV
+      - uses: softprops/action-gh-release@v2
         with:
           name: prebuilt
           tag_name: prebuilt
           fail_on_unmatched_files: true
-          files: '${{  steps.zip.outputs.output }}'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  macos-latest:
-    runs-on: macos-latest
-    needs: init
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      - name: Installing premake5
-        run: |
-          brew install premake
-      - name: Build
-        run: |
-            cd 3rd/moon
-            git checkout master
-            premake5 gmake --cc=clang
-            make config=release -j4
-            cd ../..
-            cd cpp
-            premake5 gmake --cc=clang
-            make config=release -j4
-      - name: Build Rust Project
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: |
-          cd rust
-          cargo build --release
-      - name: Copy DLLs
-        run: |
-          mkdir -p clib lualib service example test
-          cp -f cpp/build/bin/Release/*.dylib clib
-          for file in rust/target/release/lib*.dylib; do
-            cp -f "$file" "clib/$(basename "$file" | sed 's/^lib//')"
-          done
-          cp -rf 3rd/moon/lualib/* lualib
-          cp -rf 3rd/moon/service/* service
-          cp -rf 3rd/moon/example/* example
-          cp -rf 3rd/moon/test/* test
-          cp -rf 3rd/moon/moon .
-          cp -rf 3rd/moon/liblua.dylib .
-          cp -rf 3rd/moon/README.md .
-      - uses: actboy168/action-zip@main
-        id: zip
-        with:
-          name: laux-macos
-          path: |
-            clib/
-            lualib/
-            service/
-            example/
-            test/
-            moon
-            liblua.dylib
-            README.md
-      - uses: softprops/action-gh-release@v1
-        with:
-          name: prebuilt
-          tag_name: prebuilt
-          fail_on_unmatched_files: true
-          files: '${{  steps.zip.outputs.output }}'
+          files: ${{ env.zip_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,6 +1,6 @@
 # Moon Extensions
 
-This library provides Lua extensions for [Moon](https://github.com/sniper00/moon), implemented in Rust and C/C++. By using Rust, we can leverage its ecosystem, including the `tokio` runtime.
+This library provides Lua extensions for [Moon](https://github.com/sniper00/moon), implemented in Rust and C/C++. By using Rust, we can use its ecosystem, including the `tokio` runtime.
 
 # Usage
 

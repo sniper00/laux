@@ -111,11 +111,11 @@ newaction {
     trigger = "build",
     description = "Build",
     execute = function ()
+        os.execute("git pull")
+        os.execute("git submodule init")
+        os.execute("git submodule update")
         --- Build moon
-        os.execute([[
-            cd moon
-            premake5 build
-        ]])
+        os.execute([[cd moon && premake5 build]])
 
         -- Build Cpp library
         local host = os.host()
@@ -127,7 +127,7 @@ newaction {
                 local handle = assert(io.popen(command))
                 command = handle:read("*a")
                 handle:close()
-                os.execute(string.format('"%s%s" -maxcpucount:4 laux.sln /t:build /p:Configuration=Release ', string_trim(command), [[\MSBuild\Current\Bin\MSBuild.exe]]))
+                os.execute(string.format('"%s%s" -maxcpucount:4 extensions.sln /t:build /p:Configuration=Release ', string_trim(command), [[\MSBuild\Current\Bin\MSBuild.exe]]))
             end,
             linux = function ()
                 os.execute("premake5 gmake2")

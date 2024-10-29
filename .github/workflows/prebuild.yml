@@ -64,10 +64,18 @@ jobs:
       - name: Install rust
         uses: dtolnay/rust-toolchain@1.79
       - name: Build
+        if: runner.os != 'Windows'
         run: |
           premake5 build
           premake5 publish
-          cat moon/.zip_name >> $env:GITHUB_ENV
+          zip_name=$(ls *.zip)
+          echo "zip_name=$zip_name" >> $GITHUB_ENV
+      - name: Build on Windows
+        if: runner.os == 'Windows'
+        run: |
+          premake5.exe build
+          premake5.exe publish
+          pwsh -command '$env:zip_name = (Get-ChildItem -Filter *.zip).Name; echo "zip_name=$env:zip_name" >> $env:GITHUB_ENV'
       - uses: softprops/action-gh-release@v2
         with:
           name: prebuilt

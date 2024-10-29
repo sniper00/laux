@@ -506,7 +506,7 @@ impl LuaValue for String {
             let mut len = 0;
             let ptr = ffi::luaL_checklstring(state, index, &mut len);
             let slice = std::slice::from_raw_parts(ptr as *const u8, len);
-            std::str::from_utf8_unchecked(slice).to_string()
+            String::from_utf8_lossy(slice).into_owned()
         }
     }
 
@@ -517,7 +517,7 @@ impl LuaValue for String {
             let mut len = 0;
             let ptr = ffi::lua_tolstring(state, index, &mut len);
             let slice = std::slice::from_raw_parts(ptr as *const u8, len);
-            std::str::from_utf8_unchecked(slice).to_string()
+            String::from_utf8_lossy(slice).into_owned()
         }
     }
 
@@ -531,7 +531,7 @@ impl LuaValue for String {
                 let mut len = 0;
                 let ptr = ffi::luaL_checklstring(state, index, &mut len);
                 let slice = std::slice::from_raw_parts(ptr as *const u8, len);
-                Some(std::str::from_utf8_unchecked(slice).to_string())
+                Some(String::from_utf8_lossy(slice).into_owned())
             }
         }
     }
@@ -744,14 +744,10 @@ pub fn lua_pushlightuserdata(state: LuaStateRaw, p: *mut std::ffi::c_void) {
 
 #[inline]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn to_string_unchecked(state: *mut ffi::lua_State, index: i32)-> String{
+pub fn to_string_unchecked(state: *mut ffi::lua_State, index: i32) -> String {
     match lua_type(state, index) {
-        ffi::LUA_TNIL => {
-            String::from("nil")
-        }
-        ffi::LUA_TSTRING => {
-            lua_get::<String>(state, index)
-        }
+        ffi::LUA_TNIL => String::from("nil"),
+        ffi::LUA_TSTRING => lua_get::<String>(state, index),
         ffi::LUA_TNUMBER => {
             if is_integer(state, index) {
                 lua_to::<i64>(state, index).to_string()
@@ -760,37 +756,41 @@ pub fn to_string_unchecked(state: *mut ffi::lua_State, index: i32)-> String{
             }
         }
         ffi::LUA_TBOOLEAN => {
-            if lua_to::<bool>(state, index) { 
-                String::from("true") 
-            } else { 
-                String::from("false") 
+            if lua_to::<bool>(state, index) {
+                String::from("true")
+            } else {
+                String::from("false")
             }
         }
-        _ => {
-            String::from("string type expected")
-        }
+        _ => String::from("string type expected"),
     }
 }
 
-extern "C-unwind" fn lua_dropuserdata<T>(state: *mut ffi::lua_State)-> c_int {
+extern "C-unwind" fn lua_dropuserdata<T>(state: *mut ffi::lua_State) -> c_int {
     unsafe {
         let p = ffi::lua_touserdata(state, 1);
         if p.is_null() {
             return 0;
         }
         let p = p as *mut *mut T;
-        let _ = Box::from_raw(*p);
+        drop(Box::from_raw(*p));
     }
     0
 }
 
-pub fn lua_newuserdata<T>(state: *mut ffi::lua_State, val: T, metaname:*const c_char, lib:&[ffi::luaL_Reg]) -> Option<&T> {
+pub fn lua_newuserdata<T>(
+    state: *mut ffi::lua_State,
+    val: T,
+    metaname: *const c_char,
+    lib: &[ffi::luaL_Reg],
+) -> Option<&T> {
     unsafe {
         let p = ffi::lua_newuserdatauv(state, std::mem::size_of::<*const T>(), 0) as *mut *mut T;
         if p.is_null() {
             return None;
         }
-        *p = Box::leak(Box::new(val));
+
+        *p = Box::into_raw(Box::new(val));
 
         if ffi::luaL_newmetatable(state, metaname) != 0 {
             ffi::lua_createtable(state, 0, lib.len() as c_int);
@@ -816,4 +816,3 @@ pub fn lua_touserdata<T>(state: *mut ffi::lua_State, index: i32) -> Option<&'sta
         Some(&*p)
     }
 }
-

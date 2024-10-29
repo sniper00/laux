@@ -13,7 +13,7 @@ You can directly use the precompiled releases.
 To compile the project, follow these steps:
 
 - [Install Premake5](https://premake.github.io/download).
-- Run `premake5 build`.
+- Run `premake5 build` `premake5 publish`.
 
 After compiling, the `clib` and `lualib` directories will be automatically copied to the moon directory.
 

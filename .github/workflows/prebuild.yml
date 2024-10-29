@@ -57,18 +57,18 @@ jobs:
       - name: Installing premake5
         if: runner.os != 'macOS'
         uses: Jarod42/install-premake5@v1
-      - name: Build Rust Project
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Install rust
+        uses: dtolnay/rust-toolchain@1.79
       - name: Build
         run: |
           premake5 build
           premake5 publish
-          zip_name=$(ls *.zip)
-          echo "zip_name=$zip_name" >> $GITHUB_ENV
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            pwsh -command '$env:zip_name = (Get-ChildItem -Filter *.zip).Name; echo "zip_name=$env:zip_name" >> $env:GITHUB_ENV'
+          else
+            zip_name=$(ls *.zip)
+            echo "zip_name=$zip_name" >> $GITHUB_ENV
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           name: prebuilt

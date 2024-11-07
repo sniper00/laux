@@ -602,10 +602,51 @@ where
     LuaValue::push_lua(state, v);
 }
 
+#[derive(PartialEq, Eq)]
+pub enum LuaType {
+    Nil,
+    Boolean,
+    LightUserData,
+    Number,
+    String,
+    Table,
+    Function,
+    UserData,
+    Thread,
+}
+
+impl Into<i32> for LuaType {
+    fn into(self) -> i32 {
+        match self {
+            LuaType::Nil => 0,
+            LuaType::Boolean => 1,
+            LuaType::LightUserData => 2,
+            LuaType::Number => 3,
+            LuaType::String => 4,
+            LuaType::Table => 5,
+            LuaType::Function => 6,
+            LuaType::UserData => 7,
+            LuaType::Thread => 8,
+        }
+    }
+}
+
 #[inline]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn lua_type(state: LuaStateRaw, index: i32) -> i32 {
-    unsafe { ffi::lua_type(state, index) }
+pub fn lua_type(state: LuaStateRaw, index: i32) -> LuaType {
+    let ltype = unsafe { ffi::lua_type(state, index) };
+    match ltype {
+        ffi::LUA_TNIL => LuaType::Nil,
+        ffi::LUA_TBOOLEAN => LuaType::Boolean,
+        ffi::LUA_TLIGHTUSERDATA => LuaType::LightUserData,
+        ffi::LUA_TNUMBER => LuaType::Number,
+        ffi::LUA_TSTRING => LuaType::String,
+        ffi::LUA_TTABLE => LuaType::Table,
+        ffi::LUA_TFUNCTION => LuaType::Function,
+        ffi::LUA_TUSERDATA => LuaType::UserData,
+        ffi::LUA_TTHREAD => LuaType::Thread,
+        _ => unreachable!(),
+    }
 }
 
 #[inline]
@@ -746,51 +787,51 @@ pub fn lua_pushlightuserdata(state: LuaStateRaw, p: *mut std::ffi::c_void) {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn to_string_unchecked(state: *mut ffi::lua_State, index: i32) -> String {
     match lua_type(state, index) {
-        ffi::LUA_TNIL => String::from("nil"),
-        ffi::LUA_TSTRING => lua_get::<String>(state, index),
-        ffi::LUA_TNUMBER => {
-            if is_integer(state, index) {
-                lua_to::<i64>(state, index).to_string()
-            } else {
-                lua_to::<f64>(state, index).to_string()
-            }
-        }
-        ffi::LUA_TBOOLEAN => {
+        LuaType::Nil => String::from("nil"),
+        LuaType::Boolean => {
             if lua_to::<bool>(state, index) {
                 String::from("true")
             } else {
                 String::from("false")
             }
         }
+        LuaType::Number => {
+            if is_integer(state, index) {
+                lua_to::<i64>(state, index).to_string()
+            } else {
+                lua_to::<f64>(state, index).to_string()
+            }
+        }
+        LuaType::String => lua_as_str(state, index).to_string(),
         _ => String::from("string type expected"),
     }
 }
 
-extern "C-unwind" fn lua_dropuserdata<T>(state: *mut ffi::lua_State) -> c_int {
-    unsafe {
-        let p = ffi::lua_touserdata(state, 1);
-        if p.is_null() {
-            return 0;
-        }
-        let p = p as *mut *mut T;
-        drop(Box::from_raw(*p));
-    }
-    0
-}
-
+#[inline]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn lua_newuserdata<T>(
     state: *mut ffi::lua_State,
     val: T,
     metaname: *const c_char,
     lib: &[ffi::luaL_Reg],
 ) -> Option<&T> {
-    unsafe {
-        let p = ffi::lua_newuserdatauv(state, std::mem::size_of::<*const T>(), 0) as *mut *mut T;
-        if p.is_null() {
-            return None;
+    extern "C-unwind" fn lua_dropuserdata<T>(state: *mut ffi::lua_State) -> c_int {
+        unsafe {
+            let p = ffi::lua_touserdata(state, 1);
+            if p.is_null() {
+                return 0;
+            }
+            let p = p as *mut T;
+            std::ptr::drop_in_place(p);
         }
+        0
+    }
 
-        *p = Box::into_raw(Box::new(val));
+    unsafe {
+        let ptr = ffi::lua_newuserdatauv(state, std::mem::size_of::<T>(), 0) as *mut T;
+        let ptr = std::ptr::NonNull::new(ptr)?;
+
+        ptr.as_ptr().write(val);
 
         if ffi::luaL_newmetatable(state, metaname) != 0 {
             ffi::lua_createtable(state, 0, lib.len() as c_int);
@@ -801,18 +842,23 @@ pub fn lua_newuserdata<T>(
         }
 
         ffi::lua_setmetatable(state, -2);
-        let p = *p;
-        Some(&*p)
+        Some(&*ptr.as_ptr())
     }
 }
 
-pub fn lua_touserdata<T>(state: *mut ffi::lua_State, index: i32) -> Option<&'static T> {
+#[inline]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn lua_touserdata<T>(state: *mut ffi::lua_State, index: i32) -> Option<&'static mut T> {
     unsafe {
-        let p = ffi::lua_touserdata(state, index);
-        if p.is_null() {
-            return None;
-        }
-        let p = *(p as *mut *mut T);
-        Some(&*p)
+        let ptr = ffi::lua_touserdata(state, index);
+        let ptr = std::ptr::NonNull::new(ptr)?;
+        let ptr = ptr.as_ptr() as *mut T;
+        Some(&mut *ptr)
     }
+}
+
+#[inline]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn lua_isinteger(state: LuaStateRaw, index: i32) -> bool {
+    unsafe { ffi::lua_isinteger(state, index) != 0 }
 }

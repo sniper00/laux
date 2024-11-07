@@ -31,16 +31,22 @@ local res = excel.read("example.xlsx")
 --[[
 ---format
 {
-    "sheet_name_1":{
-        {"A1","B1","C1"},
-        {"A2","B2","C2"},
-        {"A3","B3","C3"}
+    {
+        "data":{
+            {"A1","B1","C1"},
+            {"A2","B2","C2"},
+            {"A3","B3","C3"}
+        },
+        "sheet_name":"Sheet1"
     },
-    "sheet_name_2":{
-        {"A1","B1","C1"},
-        {"A2","B2","C2"},
-        {"A3","B3","C3"}
-    },
+    {
+        "data":{
+            {"A1","B1","C1"},
+            {"A2","B2","C2"},
+            {"A3","B3","C3"}
+        },
+        "sheet_name":"Sheet2"
+    }
 }
 ]]
 

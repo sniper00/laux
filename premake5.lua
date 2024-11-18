@@ -131,7 +131,7 @@ newaction {
             end,
             linux = function ()
                 os.execute("premake5 gmake2")
-                os.execute( "make -j%s config=release")
+                os.execute( "make -j4 config=release")
             end,
             macosx = function ()
                 os.execute("premake5 gmake2 --cc=clang")

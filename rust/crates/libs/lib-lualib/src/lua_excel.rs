@@ -1,4 +1,4 @@
-use calamine::{open_workbook, DataType, Reader, Xlsx};
+use calamine::{open_workbook, Data, Reader, Xlsx};
 use csv::ReaderBuilder;
 use lib_lua::{self, cstr, ffi, ffi::luaL_Reg, laux, lreg, lreg_null};
 use std::{os::raw::c_int, path::Path};
@@ -81,7 +81,7 @@ fn read_xlxs(state: *mut ffi::lua_State, path: &Path, max_row: usize) -> c_int {
             }
             let mut sheet_counter = 0;
             workbook.sheet_names().iter().for_each(|sheet| {
-                if let Some(Ok(range)) = workbook.worksheet_range(sheet) {
+                if let Ok(range) = workbook.worksheet_range(sheet) {
                     unsafe {
                         ffi::lua_createtable(state, 0, 2);
                         laux::lua_push(state, sheet.as_str());
@@ -100,15 +100,15 @@ fn read_xlxs(state: *mut ffi::lua_State, path: &Path, max_row: usize) -> c_int {
                                 //columns
 
                                 match cell {
-                                    DataType::Int(v) => {
+                                    Data::Int(v) => {
                                         ffi::lua_pushinteger(state, *v as ffi::lua_Integer)
                                     }
-                                    DataType::Float(v) => ffi::lua_pushnumber(state, *v),
-                                    DataType::String(v) => laux::lua_push(state, v.as_str()),
-                                    DataType::Bool(v) => ffi::lua_pushboolean(state, *v as i32),
-                                    DataType::Error(v) => laux::lua_push(state, v.to_string()),
-                                    DataType::Empty => ffi::lua_pushnil(state),
-                                    DataType::DateTime(v) => laux::lua_push(state, v.to_string()),
+                                    Data::Float(v) => ffi::lua_pushnumber(state, *v),
+                                    Data::String(v) => laux::lua_push(state, v.as_str()),
+                                    Data::Bool(v) => ffi::lua_pushboolean(state, *v as i32),
+                                    Data::Error(v) => laux::lua_push(state, v.to_string()),
+                                    Data::Empty => ffi::lua_pushnil(state),
+                                    Data::DateTime(v) => laux::lua_push(state, v.to_string()),
                                     _ => ffi::lua_pushnil(state),
                                 }
                                 ffi::lua_rawseti(state, -2, (j + 1) as i64);
@@ -162,7 +162,13 @@ extern "C-unwind" fn lua_excel_read(state: *mut ffi::lua_State) -> c_int {
     }
 }
 
+/// # Safety
+///
+/// This function is unsafe because it dereferences a raw pointer `state`.
+/// The caller must ensure that `state` is a valid pointer to a `lua_State`
+/// and that it remains valid for the duration of the function call.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub unsafe extern "C-unwind" fn luaopen_rust_excel(state: *mut ffi::lua_State) -> c_int {
     let l = [lreg!("read", lua_excel_read), lreg_null!()];
 

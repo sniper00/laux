@@ -1,10 +1,14 @@
-use lib_core::{buffer::Buffer, context::CONTEXT};
-use lib_lua::{self, cstr, ffi, ffi::luaL_Reg, laux, lreg, lreg_null};
-use reqwest::{header::HeaderMap, Method};
+use lib_core::context::CONTEXT;
+use lib_lua::{
+    self, cstr,
+    ffi::{self, luaL_Reg},
+    laux, lreg, lreg_null, lua_rawsetfield,
+};
+use reqwest::{header::HeaderMap, Method, Response};
 use std::{error::Error, ffi::c_int, str::FromStr};
 use url::form_urlencoded::{self};
 
-use crate::{get_send_message_fn, SendMessageFn};
+use crate::{get_send_message_fn, moon_send, SendMessageFn, PTYPE_ERROR};
 
 struct HttpRequest {
     owner: u32,
@@ -42,46 +46,8 @@ async fn http_request(
         .send()
         .await?;
 
-    let mut buffer = Buffer::with_capacity(256);
+    moon_send(protocol_type, req.owner, req.session, &callback, response);
 
-    buffer.commit(std::mem::size_of::<u32>());
-
-    buffer.write_str(
-        format!(
-            "{} {} {}\r\n",
-            version_to_string(&response.version()),
-            response.status().as_u16(),
-            response.status().canonical_reason().unwrap_or("")
-        )
-        .as_str(),
-    );
-
-    for (key, value) in response.headers().iter() {
-        buffer.write_str(
-            format!(
-                "{}: {}\r\n",
-                key.to_string().to_lowercase(),
-                value.to_str().unwrap_or("")
-            )
-            .as_str(),
-        );
-    }
-
-    buffer.write_str("\r\n\r\n");
-
-    buffer.seek(std::mem::size_of::<u32>() as isize);
-    buffer.write_front((buffer.len() as u32).to_le_bytes().as_ref());
-
-    let body = response.bytes().await?;
-    buffer.write_slice(body.as_ref());
-
-    callback(
-        protocol_type,
-        req.owner,
-        req.session,
-        buffer.as_ptr() as *const i8,
-        buffer.len(),
-    );
     Ok(())
 }
 
@@ -153,12 +119,13 @@ extern "C-unwind" fn lua_http_request(state: *mut ffi::lua_State) -> c_int {
             let session = req.session;
             let owner = req.owner;
             if let Err(err) = http_request(req, callback, protocol_type).await {
+                let err_string = err.to_string();
                 callback(
-                    4,
+                    PTYPE_ERROR,
                     owner,
                     session,
-                    err.to_string().as_ptr() as *const i8,
-                    err.to_string().len(),
+                    err_string.as_ptr() as *const i8,
+                    err_string.len(),
                 );
             }
         });
@@ -218,16 +185,57 @@ extern "C-unwind" fn lua_http_form_urldecode(state: *mut ffi::lua_State) -> c_in
     1
 }
 
+extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
+    let bytes = laux::lua_from_raw_parts(state, 1);
+    let p_as_isize = isize::from_ne_bytes(bytes.try_into().expect("slice with incorrect length"));
+    let response = unsafe { Box::from_raw(p_as_isize as *mut Response) };
+
+    unsafe {
+        ffi::lua_createtable(state, 0, 6);
+        lua_rawsetfield!(
+            state,
+            -1,
+            "version",
+            laux::lua_push(state, version_to_string(&response.version()))
+        );
+        lua_rawsetfield!(
+            state,
+            -1,
+            "status_code",
+            laux::lua_push(state, response.status().as_u16() as u32)
+        );
+
+        ffi::lua_pushstring(state, cstr!("headers"));
+        ffi::lua_createtable(state, 0, 16);
+
+        for (key, value) in response.headers().iter() {
+            laux::lua_push(state, key.to_string().to_lowercase());
+            laux::lua_push(state, value.to_str().unwrap_or("").trim());
+            ffi::lua_rawset(state, -3);
+        }
+        ffi::lua_rawset(state, -3);
+    }
+    1
+}
+
+/// # Safety
+///
+/// This function is unsafe because it dereferences a raw pointer `state`.
+/// The caller must ensure that `state` is a valid pointer to a `lua_State`
+/// and that it remains valid for the duration of the function call.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub unsafe extern "C-unwind" fn luaopen_rust_httpc(state: *mut ffi::lua_State) -> c_int {
     let l = [
         lreg!("request", lua_http_request),
         lreg!("form_urlencode", lua_http_form_urlencode),
         lreg!("form_urldecode", lua_http_form_urldecode),
+        lreg!("decode", decode),
         lreg_null!(),
     ];
 
     ffi::lua_createtable(state, 0, l.len() as c_int);
     ffi::luaL_setfuncs(state, l.as_ptr(), 0);
+
     1
 }

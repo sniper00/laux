@@ -1,6 +1,6 @@
 local c = require "rust.opendal"
 local moon = require "moon"
-local protocol_type = 16
+local protocol_type = 22
 local callback = _G['send_message']
 
 moon.register_protocol {

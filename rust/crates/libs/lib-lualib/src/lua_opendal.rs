@@ -198,11 +198,18 @@ extern "C-unwind" fn operators(state: *mut ffi::lua_State) -> c_int {
     1
 }
 
+/// # Safety
+///
+/// This function is unsafe because it dereferences a raw pointer `state`.
+/// The caller must ensure that `state` is a valid pointer to a `lua_State`
+/// and that it remains valid for the duration of the function call.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub unsafe extern "C-unwind" fn luaopen_rust_opendal(state: *mut ffi::lua_State) -> c_int {
     let l = [lreg!("new", operator_new), lreg_null!()];
 
     ffi::lua_createtable(state, 0, l.len() as c_int);
     ffi::luaL_setfuncs(state, l.as_ptr(), 0);
+
     1
 }

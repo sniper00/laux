@@ -615,9 +615,9 @@ pub enum LuaType {
     Thread,
 }
 
-impl Into<i32> for LuaType {
-    fn into(self) -> i32 {
-        match self {
+impl From<LuaType> for i32 {
+    fn from(lua_type: LuaType) -> Self {
+        match lua_type {
             LuaType::Nil => 0,
             LuaType::Boolean => 1,
             LuaType::LightUserData => 2,
@@ -861,4 +861,18 @@ pub fn lua_touserdata<T>(state: *mut ffi::lua_State, index: i32) -> Option<&'sta
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn lua_isinteger(state: LuaStateRaw, index: i32) -> bool {
     unsafe { ffi::lua_isinteger(state, index) != 0 }
+}
+
+#[inline]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn lua_from_raw_parts(state: LuaStateRaw, mut index: i32) -> &'static [u8] {
+    unsafe {
+        if index < 0 {
+            index = ffi::lua_gettop(state) + index + 1;
+        }
+        ffi::luaL_checktype(state, index, ffi::LUA_TLIGHTUSERDATA);
+        let ptr = ffi::lua_touserdata(state, 1);
+        let len = lua_get(state, index+1);
+        std::slice::from_raw_parts(ptr as *const u8, len)
+    }
 }

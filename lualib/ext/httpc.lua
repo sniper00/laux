@@ -1,32 +1,19 @@
 ---@diagnostic disable: inject-field
 local moon = require "moon"
 local json = require "json"
-local httpc = require "rust.httpc"
-local core = require "http.core"
+local c = require "rust.httpc"
 
-local protocol_type = 15
+local protocol_type = 21
 local callback = _G['send_message']
 
 moon.register_protocol {
     name = "http",
     PTYPE = protocol_type,
     pack = function(...) return ... end,
-    unpack = moon.tostring,
-}
-
----@return HttpResponse
-local function parse_raw_response(raw_response, err)
-    if not raw_response then
-        return { status_code = -1, content = err }
+    unpack = function (sz, len)
+        return c.decode(sz, len)
     end
-
-    local header_len = string.unpack("<I", raw_response)
-    local raw_header = string.sub(raw_response, 5, 4 + header_len)
-    local response = core.parse_response(raw_header)
-    response.body = string.sub(raw_response, 5 + header_len)
-
-    return response
-end
+}
 
 ---@return table
 local function tojson(response)
@@ -50,7 +37,7 @@ function client.get(url, opts)
     opts.session = moon.next_sequence()
     opts.url = url
     opts.method = "GET"
-    return parse_raw_response(moon.wait(httpc.request(opts, protocol_type, callback)))
+    return moon.wait(c.request(opts, protocol_type, callback))
 end
 
 local json_content_type = { ["Content-Type"] = "application/json" }
@@ -75,7 +62,7 @@ function client.post_json(url, data, opts)
     opts.method = "POST"
     opts.body = json.encode(data)
 
-    local res = parse_raw_response(moon.wait(httpc.request(opts, protocol_type, callback)))
+    local res = moon.wait(c.request(opts, protocol_type, callback))
 
     if res.status_code == 200 then
         res.body = tojson(res)
@@ -94,7 +81,7 @@ function client.post(url, data, opts)
     opts.url = url
     opts.body = data
     opts.method = "POST"
-    return parse_raw_response(moon.wait(httpc.request(opts, protocol_type, callback)))
+    return moon.wait(c.request(opts, protocol_type, callback))
 end
 
 local form_headers = { ["Content-Type"] = "application/x-www-form-urlencoded" }
@@ -122,9 +109,9 @@ function client.post_form(url, data, opts)
 
     opts.url = url
     opts.method = "POST"
-    opts.body = httpc.form_urlencode(opts.body)
+    opts.body = c.form_urlencode(opts.body)
 
-    return parse_raw_response(moon.wait(httpc.request(opts, protocol_type, callback)))
+    return moon.wait(c.request(opts, protocol_type, callback))
 end
 
 return client

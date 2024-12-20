@@ -10,7 +10,13 @@ extern "C-unwind" fn num_alive_tasks(state: *mut ffi::lua_State) -> c_int {
     0
 }
 
+/// # Safety
+///
+/// This function is unsafe because it dereferences a raw pointer `state`.
+/// The caller must ensure that `state` is a valid pointer to a `lua_State`
+/// and that it remains valid for the duration of the function call.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub unsafe extern "C-unwind" fn luaopen_rust_runtime(state: *mut ffi::lua_State) -> c_int {
     let l = [lreg!("num_alive_tasks", num_alive_tasks), lreg_null!()];
 

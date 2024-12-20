@@ -11,7 +11,6 @@ doctest = false
 lib-lua = {package = "lib-lua-sys", path = "../../libs/lib-lua-sys",features = ["lua54"]}
 lib-common = {package= "lib-common-sys", path = "../../libs/lib-common-sys", version = "0.1.0"}
 tokio = { version = "1", features = ["full"] }
-dashmap = "5.5.3"
-lazy_static = "1.4.0"
-chrono = { version = "0.4.19", features = ["serde"] }
-reqwest = { version = "0.11", features = ["rustls-tls","trust-dns"],default-features = false}
+dashmap = "6.1.0"
+lazy_static = "1.5.0"
+reqwest = { version = "0.12", features = ["rustls-tls","trust-dns"],default-features = false}

@@ -3,7 +3,6 @@ local moon = require "moon"
 local c = require "rust.sqlx"
 
 local protocol_type = 23
-local callback = _G['send_message']
 
 moon.register_protocol {
     name = "database",
@@ -21,7 +20,7 @@ local M = {}
 ---@param name string Connection name for find by other services
 ---@param timeout? integer Connect timeout. Default 5000ms
 function M.connect(database_url, name, timeout)
-    local res = moon.wait(c.connect(protocol_type, moon.id, callback, moon.next_sequence(), database_url, name, timeout))
+    local res = moon.wait(c.connect(protocol_type, moon.id, moon.next_sequence(), database_url, name, timeout))
     if res.kind then
         error(string.format("connect database failed: %s", res.message))
     end

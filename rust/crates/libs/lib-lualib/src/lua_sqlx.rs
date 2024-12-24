@@ -1,6 +1,6 @@
 use crate::lua_json::{encode_one, JsonOptions};
 use crate::{
-    get_send_message_fn, moon_log, moon_send, SendMessageFn, LOG_LEVEL_ERROR, LOG_LEVEL_INFO,
+    moon_log, moon_send, LOG_LEVEL_ERROR, LOG_LEVEL_INFO,
 };
 use dashmap::DashMap;
 use lazy_static::lazy_static;
@@ -158,7 +158,6 @@ struct DatabaseQuery {
 async fn database_handler(
     protocol_type: u8,
     owner: u32,
-    callback: SendMessageFn,
     pool: &DatabasePool,
     mut rx: mpsc::Receiver<DatabaseOp>,
     database_url: &str,
@@ -169,11 +168,10 @@ async fn database_handler(
             DatabaseOp::Query(session, query_op) => loop {
                 match pool.query(query_op).await {
                     Ok(rows) => {
-                        moon_send(protocol_type, owner, *session, &callback, rows);
+                        moon_send(protocol_type, owner, *session, rows);
                         if failed_times > 0 {
                             moon_log(
                                 owner,
-                                callback,
                                 LOG_LEVEL_INFO,
                                 format!(
                                     "Database '{}' recover from error. Retry success.",
@@ -190,7 +188,6 @@ async fn database_handler(
                                 protocol_type,
                                 owner,
                                 session,
-                                &callback,
                                 DatabaseResult::Error(err),
                             );
                             break;
@@ -198,7 +195,6 @@ async fn database_handler(
                             if failed_times > 0 {
                                 moon_log(
                                     owner,
-                                    callback,
                                     LOG_LEVEL_ERROR,
                                     format!(
                                         "Database '{}' error: '{:?}'. Will retry.",
@@ -223,12 +219,11 @@ async fn database_handler(
 extern "C-unwind" fn connect(state: *mut ffi::lua_State) -> c_int {
     let protocol_type: u8 = laux::lua_get(state, 1);
     let owner = laux::lua_get(state, 2);
-    let callback = get_send_message_fn(state, 3).unwrap();
-    let session: i64 = laux::lua_get(state, 4);
+    let session: i64 = laux::lua_get(state, 3);
 
-    let database_url: &str = laux::lua_get(state, 5);
-    let name: &str = laux::lua_get(state, 6);
-    let connect_timeout: u64 = laux::lua_opt(state, 7).unwrap_or(5000);
+    let database_url: &str = laux::lua_get(state, 4);
+    let name: &str = laux::lua_get(state, 5);
+    let connect_timeout: u64 = laux::lua_opt(state, 6).unwrap_or(5000);
 
     if let Some(runtime) = CONTEXT.get_tokio_runtime().as_ref() {
         runtime.spawn(async move {
@@ -241,17 +236,15 @@ extern "C-unwind" fn connect(state: *mut ffi::lua_State) -> c_int {
                         protocol_type,
                         owner,
                         session,
-                        &callback,
                         DatabaseResult::Connect,
                     );
-                    database_handler(protocol_type, owner, callback, &pool, rx, database_url).await;
+                    database_handler(protocol_type, owner, &pool, rx, database_url).await;
                 }
                 Err(err) => {
                     moon_send(
                         protocol_type,
                         owner,
                         session,
-                        &callback,
                         DatabaseResult::Timeout(err.to_string()),
                     );
                 }

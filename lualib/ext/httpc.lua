@@ -4,7 +4,6 @@ local json = require "json"
 local c = require "rust.httpc"
 
 local protocol_type = 21
-local callback = _G['send_message']
 
 moon.register_protocol {
     name = "http",
@@ -37,7 +36,7 @@ function client.get(url, opts)
     opts.session = moon.next_sequence()
     opts.url = url
     opts.method = "GET"
-    return moon.wait(c.request(opts, protocol_type, callback))
+    return moon.wait(c.request(opts, protocol_type))
 end
 
 local json_content_type = { ["Content-Type"] = "application/json" }
@@ -62,7 +61,7 @@ function client.post_json(url, data, opts)
     opts.method = "POST"
     opts.body = json.encode(data)
 
-    local res = moon.wait(c.request(opts, protocol_type, callback))
+    local res = moon.wait(c.request(opts, protocol_type))
 
     if res.status_code == 200 then
         res.body = tojson(res)
@@ -81,7 +80,7 @@ function client.post(url, data, opts)
     opts.url = url
     opts.body = data
     opts.method = "POST"
-    return moon.wait(c.request(opts, protocol_type, callback))
+    return moon.wait(c.request(opts, protocol_type))
 end
 
 local form_headers = { ["Content-Type"] = "application/x-www-form-urlencoded" }
@@ -111,7 +110,7 @@ function client.post_form(url, data, opts)
     opts.method = "POST"
     opts.body = c.form_urlencode(opts.body)
 
-    return moon.wait(c.request(opts, protocol_type, callback))
+    return moon.wait(c.request(opts, protocol_type))
 end
 
 return client

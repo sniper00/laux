@@ -7,7 +7,6 @@ resolver = "2"
 members = [
     # -- Application Libraries
     "crates/libs/lib-lua-sys",
-    "crates/libs/lib-common-sys",
     "crates/libs/lib-core",
     "crates/libs/lib-lualib", 
 ]

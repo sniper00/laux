@@ -8,7 +8,7 @@ use reqwest::{header::HeaderMap, Method, Response};
 use std::{error::Error, ffi::c_int, str::FromStr};
 use url::form_urlencoded::{self};
 
-use crate::{get_send_message_fn, moon_send, SendMessageFn, PTYPE_ERROR};
+use crate::{moon_send, moon_send_string, PTYPE_ERROR};
 
 struct HttpRequest {
     owner: u32,
@@ -34,7 +34,6 @@ fn version_to_string(version: &reqwest::Version) -> &str {
 
 async fn http_request(
     req: HttpRequest,
-    callback: SendMessageFn,
     protocol_type: u8,
 ) -> Result<(), Box<dyn Error>> {
     let http_client = &CONTEXT.get_http_client(req.timeout, &req.proxy);
@@ -46,7 +45,7 @@ async fn http_request(
         .send()
         .await?;
 
-    moon_send(protocol_type, req.owner, req.session, &callback, response);
+    moon_send(protocol_type, req.owner, req.session, response);
 
     Ok(())
 }
@@ -83,15 +82,6 @@ extern "C-unwind" fn lua_http_request(state: *mut ffi::lua_State) -> c_int {
 
     let protocol_type = laux::lua_get::<u8>(state, 2);
 
-    let callback = get_send_message_fn(state, 3);
-    if callback.is_none() {
-        laux::lua_push(state, false);
-        laux::lua_push(state, "Invalid send_message function pointer");
-        return 2;
-    }
-
-    let callback = callback.unwrap();
-
     let headers = match extract_headers(state, 1) {
         Ok(headers) => headers,
         Err(err) => {
@@ -118,14 +108,13 @@ extern "C-unwind" fn lua_http_request(state: *mut ffi::lua_State) -> c_int {
         runtime.spawn(async move {
             let session = req.session;
             let owner = req.owner;
-            if let Err(err) = http_request(req, callback, protocol_type).await {
+            if let Err(err) = http_request(req, protocol_type).await {
                 let err_string = err.to_string();
-                callback(
+                moon_send_string(
                     PTYPE_ERROR,
                     owner,
                     session,
-                    err_string.as_ptr() as *const i8,
-                    err_string.len(),
+                    err_string
                 );
             }
         });

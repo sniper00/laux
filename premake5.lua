@@ -54,7 +54,6 @@ local function add_lua_module(dir, name, options )
         kind "SharedLib"
         includedirs {"./cpp", "moon/third/lua/"}
         libdirs {"moon/build/bin/Release"}
-        links{"lua"}
         files { dir.."/*.h",dir.."/*.hpp", dir.."/*.c",dir.."/*.cpp"}
 
         defines{"SOL_ALL_SAFETIES_ON"}
@@ -69,6 +68,7 @@ local function add_lua_module(dir, name, options )
 
         filter { "system:windows" }
             defines{"LUA_BUILD_AS_DLL"}
+            links{"moon"}
             if type(options.windows)=="function" then
                 options.windows()
             end

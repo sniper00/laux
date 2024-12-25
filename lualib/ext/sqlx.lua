@@ -8,8 +8,8 @@ moon.register_protocol {
     name = "database",
     PTYPE = protocol_type,
     pack = function(...) return ... end,
-    unpack = function(sz, len)
-        return c.decode(sz, len)
+    unpack = function(val)
+        return c.decode(val)
     end
 }
 

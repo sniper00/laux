@@ -14,18 +14,14 @@ lazy_static! {
 
         Context {
             http_clients: DashMap::new(),
-            tokio_runtime: if let Ok(rt) = tokio_runtime {
-                Some(rt)
-            } else {
-                None
-            },
+            tokio_runtime: tokio_runtime.expect("Init tokio runtime failed")
         }
     };
 }
 
 pub struct Context {
     http_clients: DashMap<String, reqwest::Client>,
-    tokio_runtime: Option<tokio::runtime::Runtime>,
+    pub tokio_runtime: tokio::runtime::Runtime,
 }
 
 impl Context {
@@ -51,9 +47,5 @@ impl Context {
 
         self.http_clients.insert(name.to_string(), client.clone());
         client
-    }
-
-    pub fn get_tokio_runtime(&self) -> Option<&tokio::runtime::Runtime> {
-        self.tokio_runtime.as_ref()
     }
 }

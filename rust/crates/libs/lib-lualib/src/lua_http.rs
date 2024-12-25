@@ -8,7 +8,7 @@ use reqwest::{header::HeaderMap, Method, Response};
 use std::{error::Error, ffi::c_int, str::FromStr};
 use url::form_urlencoded::{self};
 
-use crate::{moon_send, moon_send_string, PTYPE_ERROR};
+use crate::{moon_send, moon_send_bytes, PTYPE_ERROR};
 
 struct HttpRequest {
     owner: u32,
@@ -32,10 +32,7 @@ fn version_to_string(version: &reqwest::Version) -> &str {
     }
 }
 
-async fn http_request(
-    req: HttpRequest,
-    protocol_type: u8,
-) -> Result<(), Box<dyn Error>> {
+async fn http_request(req: HttpRequest, protocol_type: u8) -> Result<(), Box<dyn Error>> {
     let http_client = &CONTEXT.get_http_client(req.timeout, &req.proxy);
 
     let response = http_client
@@ -104,25 +101,14 @@ extern "C-unwind" fn lua_http_request(state: *mut ffi::lua_State) -> c_int {
         proxy: laux::opt_field(state, 1, "proxy").unwrap_or_default(),
     };
 
-    if let Some(runtime) = CONTEXT.get_tokio_runtime().as_ref() {
-        runtime.spawn(async move {
-            let session = req.session;
-            let owner = req.owner;
-            if let Err(err) = http_request(req, protocol_type).await {
-                let err_string = err.to_string();
-                moon_send_string(
-                    PTYPE_ERROR,
-                    owner,
-                    session,
-                    err_string
-                );
-            }
-        });
-    } else {
-        laux::lua_push(state, false);
-        laux::lua_push(state, "No tokio runtime");
-        return 2;
-    }
+    CONTEXT.tokio_runtime.spawn(async move {
+        let session = req.session;
+        let owner = req.owner;
+        if let Err(err) = http_request(req, protocol_type).await {
+            let err_string = err.to_string();
+            moon_send_bytes(PTYPE_ERROR, owner, session, err_string.as_bytes());
+        }
+    });
 
     laux::lua_push(state, session);
     1
@@ -175,8 +161,7 @@ extern "C-unwind" fn lua_http_form_urldecode(state: *mut ffi::lua_State) -> c_in
 }
 
 extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
-    let bytes = laux::lua_from_raw_parts(state, 1);
-    let p_as_isize = isize::from_ne_bytes(bytes.try_into().expect("slice with incorrect length"));
+    let p_as_isize: isize = laux::lua_get(state, 1);
     let response = unsafe { Box::from_raw(p_as_isize as *mut Response) };
 
     unsafe {

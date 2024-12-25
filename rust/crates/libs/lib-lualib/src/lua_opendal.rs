@@ -7,7 +7,7 @@ use ::opendal as od;
 use lib_core::context::CONTEXT;
 use lib_lua::{self, cstr, ffi, ffi::luaL_Reg, laux, lreg, lreg_null};
 
-use crate::get_send_message_fn;
+use crate::{moon_send_bytes, PTYPE_ERROR};
 
 fn lua_to_schema(
     state: *mut ffi::lua_State,
@@ -69,103 +69,97 @@ extern "C-unwind" fn operators(state: *mut ffi::lua_State) -> c_int {
     let op = op.unwrap();
 
     let protocol_type = laux::lua_get::<u8>(state, 2);
-    let callback = get_send_message_fn(state, 3);
-    if callback.is_none() {
-        laux::lua_error(state, "Invalid send_message function pointer");
+
+    let session: i64 = laux::lua_get(state, 3);
+    let owner = laux::lua_get(state, 4);
+    let op_name = laux::lua_get::<&str>(state, 5);
+
+    let path = laux::lua_get::<&str>(state, 6);
+    if path.is_empty() {
+        laux::lua_error(state, "path is empty");
     }
 
-    let callback = callback.unwrap();
-    let session: i64 = laux::lua_get(state, 4);
-    let owner = laux::lua_get(state, 5);
-    let op_name = laux::lua_get::<&str>(state, 6);
-
-    if let Some(runtime) = CONTEXT.get_tokio_runtime().as_ref() {
-        let path = laux::lua_get::<&str>(state, 7);
-        if path.is_empty() {
-            laux::lua_error(state, "path is empty");
+    let handle_result = move |result: opendal::Result<Vec<u8>>| match result {
+        Ok(data) => {
+            let vec = data.to_vec();
+            moon_send_bytes(
+                protocol_type,
+                owner,
+                session,
+                vec.as_ref(),
+            );
         }
+        Err(err) => {
+            let err_str = err.to_string();
+            moon_send_bytes(
+                PTYPE_ERROR,
+                owner,
+                session,
+                err_str.as_bytes(),
+            );
+        }
+    };
 
-        let handle_result = move |result: opendal::Result<Vec<u8>>| match result {
-            Ok(data) => {
-                let vec = data.to_vec();
-                callback(
-                    protocol_type,
-                    owner,
-                    session,
-                    vec.as_ptr() as *const i8,
-                    vec.len(),
+    match op_name {
+        "read" => {
+            CONTEXT.tokio_runtime.spawn(async move {
+                handle_result(op.read(path).await.map(|v| v.to_vec()));
+            });
+        }
+        "write" => {
+            let data = laux::lua_get::<&[u8]>(state, 8);
+            CONTEXT.tokio_runtime.spawn(async move {
+                handle_result(op.write(path, data).await.map(|_| vec![]));
+            });
+        }
+        "delete" => {
+            CONTEXT.tokio_runtime.spawn(async move {
+                handle_result(op.delete(path).await.map(|_| vec![]));
+            });
+        }
+        "exists" => {
+            CONTEXT.tokio_runtime.spawn(async move {
+                handle_result(
+                    op.exists(path)
+                        .await
+                        .map(|exist| exist.to_string().into_bytes()),
                 );
+            });
+        }
+        "create_dir" => {
+            CONTEXT.tokio_runtime.spawn(async move {
+                handle_result(op.create_dir(path).await.map(|_| vec![]));
+            });
+        }
+        "rename" => {
+            let to = laux::lua_get::<&str>(state, 8);
+            if to.is_empty() {
+                laux::lua_error(state, "to is empty");
             }
-            Err(err) => {
-                let err_str = err.to_string();
-                callback(
-                    4,
-                    owner,
-                    session,
-                    err_str.as_ptr() as *const i8,
-                    err_str.len(),
-                );
-            }
-        };
-
-        match op_name {
-            "read" => {
-                runtime.spawn(async move {
-                    handle_result(op.read(path).await.map(|v| v.to_vec()));
-                });
-            }
-            "write" => {
-                let data = laux::lua_get::<&[u8]>(state, 8);
-                runtime.spawn(async move {
-                    handle_result(op.write(path, data).await.map(|_| vec![]));
-                });
-            }
-            "delete" => {
-                runtime.spawn(async move {
-                    handle_result(op.delete(path).await.map(|_| vec![]));
-                });
-            }
-            "exists" => {
-                runtime.spawn(async move {
-                    handle_result(
-                        op.exists(path)
-                            .await
-                            .map(|exist| exist.to_string().into_bytes()),
-                    );
-                });
-            }
-            "create_dir" => {
-                runtime.spawn(async move {
-                    handle_result(op.create_dir(path).await.map(|_| vec![]));
-                });
-            }
-            "rename" => {
-                let to = laux::lua_get::<&str>(state, 8);
-                if to.is_empty() {
-                    laux::lua_error(state, "to is empty");
-                }
-                runtime.spawn(async move {
-                    handle_result(op.rename(path, to).await.map(|_| vec![]));
-                });
-            }
-            "stat" => {
-                runtime.spawn(async move {
-                    handle_result(op.stat(path).await.map(|stat| {
-                        let json_obj = json!({
-                            "content_length": stat.content_length(),
-                            "content_md5": stat.content_md5(),
-                            "content_type": stat.content_type(),
-                            "is_dir": stat.is_dir(),
-                            "is_file": stat.is_file()
-                        });
-                        json_obj.to_string().into_bytes()
-                    }));
-                });
-            }
-            "list"=> {
-                runtime.spawn(async move {
-                    handle_result(op.list(path).await.map(|list| {
-                        let json_obj = list.into_iter().map(|stat| {
+            CONTEXT.tokio_runtime.spawn(async move {
+                handle_result(op.rename(path, to).await.map(|_| vec![]));
+            });
+        }
+        "stat" => {
+            CONTEXT.tokio_runtime.spawn(async move {
+                handle_result(op.stat(path).await.map(|stat| {
+                    let json_obj = json!({
+                        "content_length": stat.content_length(),
+                        "content_md5": stat.content_md5(),
+                        "content_type": stat.content_type(),
+                        "is_dir": stat.is_dir(),
+                        "is_file": stat.is_file()
+                    });
+                    json_obj.to_string().into_bytes()
+                }));
+            });
+        }
+        "list" => {
+            CONTEXT.tokio_runtime.spawn(async move {
+                handle_result(op.list(path).await.map(|list| {
+                    let json_obj = list
+                        .into_iter()
+                        .map(|stat| {
                             let (path, metadata) = stat.into_parts();
                             json!({
                                 "path": path,
@@ -177,21 +171,19 @@ extern "C-unwind" fn operators(state: *mut ffi::lua_State) -> c_int {
                                     "is_file": metadata.is_file()
                                 }
                             })
-                        }).collect::<Vec<_>>();
-                        serde_json::to_string(&json_obj).unwrap_or_default().into_bytes()
-                    }));
-                });
-            }
-            _ => {
-                laux::lua_push(state, false);
-                laux::lua_push(state, "Invalid operator name");
-                return 2;
-            }
+                        })
+                        .collect::<Vec<_>>();
+                    serde_json::to_string(&json_obj)
+                        .unwrap_or_default()
+                        .into_bytes()
+                }));
+            });
         }
-    } else {
-        laux::lua_push(state, false);
-        laux::lua_push(state, "No tokio runtime");
-        return 2;
+        _ => {
+            laux::lua_push(state, false);
+            laux::lua_push(state, "Invalid operator name");
+            return 2;
+        }
     }
 
     laux::lua_push(state, session);

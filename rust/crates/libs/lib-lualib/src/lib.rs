@@ -1,43 +1,32 @@
+use std::isize;
+
 pub mod lua_excel;
 pub mod lua_http;
 // pub mod lua_opendal;
-pub mod lua_sqlx;
 pub mod lua_json;
 pub mod lua_runtime;
+pub mod lua_sqlx;
 
-unsafe extern "C-unwind" {
-    unsafe fn send_message(type_: u8, receiver: u32, session: i64, data: *const i8, len: usize);
-}
+pub fn moon_send<T>(protocol_type: u8, owner: u32, session: i64, res: T) {
+    unsafe extern "C-unwind" {
+        unsafe fn send_integer_message(type_: u8, receiver: u32, session: i64, val: isize);
+    }
 
-pub fn moon_send<T>(
-    protocol_type: u8,
-    owner: u32,
-    session: i64,
-    res: T,
-) {
     if session == 0 {
         return;
     }
     let ptr = Box::into_raw(Box::new(res));
-    let bytes = (ptr as isize).to_ne_bytes();
 
     unsafe {
-        send_message(
-            protocol_type,
-            owner,
-            session,
-            bytes.as_ptr() as *const i8,
-            bytes.len(),
-        );
+        send_integer_message(protocol_type, owner, session, ptr as isize);
     }
 }
 
-pub fn moon_send_string(
-    protocol_type: u8,
-    owner: u32,
-    session: i64,
-    data: String,
-) {
+pub fn moon_send_bytes(protocol_type: u8, owner: u32, session: i64, data: &[u8]) {
+    unsafe extern "C-unwind" {
+        unsafe fn send_message(type_: u8, receiver: u32, session: i64, data: *const i8, len: usize);
+    }
+
     unsafe {
         send_message(
             protocol_type,
@@ -58,6 +47,9 @@ pub const LOG_LEVEL_INFO: u8 = 3;
 pub const LOG_LEVEL_DEBUG: u8 = 4;
 
 pub fn moon_log(owner: u32, log_level: u8, data: String) {
+    unsafe extern "C-unwind" {
+        unsafe fn send_message(type_: u8, receiver: u32, session: i64, data: *const i8, len: usize);
+    }
     let message = format!("{}{}", log_level, data);
     unsafe {
         send_message(

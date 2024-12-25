@@ -3,11 +3,11 @@ use lib_lua::{self, cstr, ffi, ffi::luaL_Reg, laux, lreg, lreg_null};
 use std::ffi::c_int;
 
 extern "C-unwind" fn num_alive_tasks(state: *mut ffi::lua_State) -> c_int {
-    if let Some(runtime) = CONTEXT.get_tokio_runtime().as_ref() {
-        laux::lua_push(state, runtime.metrics().num_alive_tasks() as i64);
-        return 1;
-    }
-    0
+    laux::lua_push(
+        state,
+        CONTEXT.tokio_runtime.metrics().num_alive_tasks() as i64,
+    );
+    return 1;
 }
 
 /// # Safety

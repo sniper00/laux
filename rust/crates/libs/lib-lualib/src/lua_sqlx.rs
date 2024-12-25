@@ -1,7 +1,5 @@
 use crate::lua_json::{encode_one, JsonOptions};
-use crate::{
-    moon_log, moon_send, LOG_LEVEL_ERROR, LOG_LEVEL_INFO,
-};
+use crate::{moon_log, moon_send, LOG_LEVEL_ERROR, LOG_LEVEL_INFO};
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 use lib_core::context::CONTEXT;
@@ -86,7 +84,7 @@ impl DatabasePool {
         f64: sqlx::Encode<'a, DB> + sqlx::Type<DB>,
         &'a str: sqlx::Encode<'a, DB> + sqlx::Type<DB>,
         serde_json::Value: sqlx::Encode<'a, DB> + sqlx::Type<DB>,
-        &'a Vec::<u8>: sqlx::Encode<'a, DB> + sqlx::Type<DB>,
+        &'a Vec<u8>: sqlx::Encode<'a, DB> + sqlx::Type<DB>,
     {
         let mut query = sqlx::query(sql);
         for bind in binds {
@@ -184,12 +182,7 @@ async fn database_handler(
                     Err(err) => {
                         let session = *session;
                         if session != 0 {
-                            moon_send(
-                                protocol_type,
-                                owner,
-                                session,
-                                DatabaseResult::Error(err),
-                            );
+                            moon_send(protocol_type, owner, session, DatabaseResult::Error(err));
                             break;
                         } else {
                             if failed_times > 0 {
@@ -225,32 +218,24 @@ extern "C-unwind" fn connect(state: *mut ffi::lua_State) -> c_int {
     let name: &str = laux::lua_get(state, 5);
     let connect_timeout: u64 = laux::lua_opt(state, 6).unwrap_or(5000);
 
-    if let Some(runtime) = CONTEXT.get_tokio_runtime().as_ref() {
-        runtime.spawn(async move {
-            match DatabasePool::connect(database_url, Duration::from_millis(connect_timeout)).await
-            {
-                Ok(pool) => {
-                    let (tx, rx) = mpsc::channel(100);
-                    DATABASE_CONNECTIONSS.insert(name.to_string(), tx);
-                    moon_send(
-                        protocol_type,
-                        owner,
-                        session,
-                        DatabaseResult::Connect,
-                    );
-                    database_handler(protocol_type, owner, &pool, rx, database_url).await;
-                }
-                Err(err) => {
-                    moon_send(
-                        protocol_type,
-                        owner,
-                        session,
-                        DatabaseResult::Timeout(err.to_string()),
-                    );
-                }
-            };
-        });
-    }
+    CONTEXT.tokio_runtime.spawn(async move {
+        match DatabasePool::connect(database_url, Duration::from_millis(connect_timeout)).await {
+            Ok(pool) => {
+                let (tx, rx) = mpsc::channel(100);
+                DATABASE_CONNECTIONSS.insert(name.to_string(), tx);
+                moon_send(protocol_type, owner, session, DatabaseResult::Connect);
+                database_handler(protocol_type, owner, &pool, rx, database_url).await;
+            }
+            Err(err) => {
+                moon_send(
+                    protocol_type,
+                    owner,
+                    session,
+                    DatabaseResult::Timeout(err.to_string()),
+                );
+            }
+        };
+    });
 
     laux::lua_push(state, session);
     1
@@ -307,7 +292,9 @@ extern "C-unwind" fn query(state: *mut ffi::lua_State) -> c_int {
                     laux::lua_error(state, &err);
                 }
                 if buffer[0] == b'{' || buffer[0] == b'[' {
-                    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(buffer.as_slice()) {
+                    if let Ok(value) =
+                        serde_json::from_slice::<serde_json::Value>(buffer.as_slice())
+                    {
                         params.push(QueryParams::Json(value));
                     } else {
                         params.push(QueryParams::Bytes(buffer));
@@ -495,8 +482,7 @@ extern "C-unwind" fn find_connection(state: *mut ffi::lua_State) -> c_int {
 }
 
 extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
-    let bytes = laux::lua_from_raw_parts(state, 1);
-    let p_as_isize = isize::from_ne_bytes(bytes.try_into().expect("slice with incorrect length"));
+    let p_as_isize: isize = laux::lua_get(state, 1);
     let result = unsafe { Box::from_raw(p_as_isize as *mut DatabaseResult) };
 
     match *result {

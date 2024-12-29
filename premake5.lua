@@ -142,7 +142,7 @@ newaction {
         switch[host]()
 
         -- Build Rust library
-        os.execute([[cd rust && rustup update && cargo build --release]])
+        os.execute([[cd rust && cargo build --release]])
     end
 }
 

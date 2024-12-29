@@ -36,6 +36,10 @@ function M.find_connection(name)
     return c.find_connection(name)
 end
 
+function M.stats()
+    return c.stats()
+end
+
 function M:close()
     self.obj:close()
 end

@@ -51,3 +51,13 @@ macro_rules! push_lua_table {
         }
     };
 }
+
+#[macro_export]
+macro_rules! luaL_newlib {
+    ($state:expr, $l:expr) => {
+        unsafe {
+            ffi::lua_createtable($state, 0, $l.len() as i32);
+            ffi::luaL_setfuncs($state, $l.as_ptr(), 0);
+        }
+    };
+}

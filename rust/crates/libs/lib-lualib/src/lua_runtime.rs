@@ -7,7 +7,7 @@ extern "C-unwind" fn num_alive_tasks(state: *mut ffi::lua_State) -> c_int {
         state,
         CONTEXT.tokio_runtime.metrics().num_alive_tasks() as i64,
     );
-    return 1;
+    1
 }
 
 /// # Safety

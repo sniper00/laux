@@ -3,6 +3,8 @@ use crate::{moon_log, moon_send, LOG_LEVEL_ERROR, LOG_LEVEL_INFO};
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 use lib_core::context::CONTEXT;
+use lib_lua::laux::{lua_into_userdata, LuaTable};
+use lib_lua::luaL_newlib;
 use lib_lua::{self, cstr, ffi, ffi::luaL_Reg, laux, lreg, lreg_null, push_lua_table};
 use sqlx::migrate::MigrateDatabase;
 use sqlx::mysql::MySqlRow;
@@ -13,12 +15,14 @@ use sqlx::{
     Column, Database, MySql, MySqlPool, PgPool, Postgres, Row, Sqlite, SqlitePool, TypeInfo,
 };
 use std::ffi::c_int;
+use std::sync::atomic::AtomicI64;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 lazy_static! {
-    static ref DATABASE_CONNECTIONSS: DashMap<String, DatabaseOpSender> = DashMap::new();
+    static ref DATABASE_CONNECTIONSS: DashMap<String, DatabaseConnection> = DashMap::new();
 }
 
 enum DatabasePool {
@@ -126,7 +130,11 @@ enum DatabaseOp {
     Close(),
 }
 
-type DatabaseOpSender = mpsc::Sender<DatabaseOp>;
+#[derive(Clone)]
+struct DatabaseConnection {
+    tx: mpsc::Sender<DatabaseOp>,
+    counter: Arc<AtomicI64>,
+}
 
 enum DatabaseResult {
     Connect,
@@ -159,6 +167,7 @@ async fn database_handler(
     pool: &DatabasePool,
     mut rx: mpsc::Receiver<DatabaseOp>,
     database_url: &str,
+    counter: Arc<AtomicI64>,
 ) {
     while let Some(op) = rx.recv().await {
         let mut failed_times = 0;
@@ -177,12 +186,14 @@ async fn database_handler(
                                 ),
                             );
                         }
+                        counter.fetch_sub(1, std::sync::atomic::Ordering::Release);
                         break;
                     }
                     Err(err) => {
                         let session = *session;
                         if session != 0 {
                             moon_send(protocol_type, owner, session, DatabaseResult::Error(err));
+                            counter.fetch_sub(1, std::sync::atomic::Ordering::Release);
                             break;
                         } else {
                             if failed_times > 0 {
@@ -222,9 +233,16 @@ extern "C-unwind" fn connect(state: *mut ffi::lua_State) -> c_int {
         match DatabasePool::connect(database_url, Duration::from_millis(connect_timeout)).await {
             Ok(pool) => {
                 let (tx, rx) = mpsc::channel(100);
-                DATABASE_CONNECTIONSS.insert(name.to_string(), tx);
+                let counter = Arc::new(AtomicI64::new(0));
+                DATABASE_CONNECTIONSS.insert(
+                    name.to_string(),
+                    DatabaseConnection {
+                        tx: tx.clone(),
+                        counter: counter.clone(),
+                    },
+                );
                 moon_send(protocol_type, owner, session, DatabaseResult::Connect);
-                database_handler(protocol_type, owner, &pool, rx, database_url).await;
+                database_handler(protocol_type, owner, &pool, rx, database_url, counter).await;
             }
             Err(err) => {
                 moon_send(
@@ -242,11 +260,8 @@ extern "C-unwind" fn connect(state: *mut ffi::lua_State) -> c_int {
 }
 
 extern "C-unwind" fn query(state: *mut ffi::lua_State) -> c_int {
-    let tx = laux::lua_touserdata::<DatabaseOpSender>(state, 1);
-    if tx.is_none() {
-        laux::lua_error(state, "Invalid connect pointer");
-    }
-    let tx = tx.unwrap();
+    let conn = laux::lua_touserdata::<DatabaseConnection>(state, 1)
+        .expect("Invalid database connect pointer");
 
     let options = JsonOptions::default();
 
@@ -317,7 +332,7 @@ extern "C-unwind" fn query(state: *mut ffi::lua_State) -> c_int {
         }
     }
 
-    match tx.try_send(DatabaseOp::Query(
+    match conn.tx.try_send(DatabaseOp::Query(
         session,
         DatabaseQuery {
             sql: sql.to_string(),
@@ -325,6 +340,8 @@ extern "C-unwind" fn query(state: *mut ffi::lua_State) -> c_int {
         },
     )) {
         Ok(_) => {
+            conn.counter
+                .fetch_add(1, std::sync::atomic::Ordering::Release);
             laux::lua_push(state, session);
             1
         }
@@ -340,13 +357,10 @@ extern "C-unwind" fn query(state: *mut ffi::lua_State) -> c_int {
 }
 
 extern "C-unwind" fn close(state: *mut ffi::lua_State) -> c_int {
-    let tx = laux::lua_touserdata::<DatabaseOpSender>(state, 1);
-    if tx.is_none() {
-        laux::lua_error(state, "Invalid connect pointer");
-    }
-    let tx = tx.unwrap();
+    let conn = laux::lua_touserdata::<DatabaseConnection>(state, 1)
+        .expect("Invalid database connect pointer");
 
-    match tx.try_send(DatabaseOp::Close()) {
+    match conn.tx.try_send(DatabaseOp::Close()) {
         Ok(_) => {
             laux::lua_push(state, true);
             1
@@ -375,10 +389,7 @@ where
     &'a str: sqlx::Decode<'a, DB>,
     &'a [u8]: sqlx::Decode<'a, DB>,
 {
-    unsafe {
-        ffi::lua_createtable(state, rows.len() as c_int, 0);
-    }
-
+    let table = LuaTable::new(state, rows.len(), 0);
     if rows.is_empty() {
         return Ok(1);
     }
@@ -398,47 +409,44 @@ where
 
     let mut i = 0;
     for row in rows.iter() {
-        unsafe {
-            ffi::lua_createtable(state, 0, row.len() as c_int);
-        }
+        let row_table = LuaTable::new(state, 0, row.len());
         for (index, column_name, column_type_name) in column_info.iter() {
             match row.try_get_raw(*index) {
-                Ok(value) => {
-                    laux::lua_push(state, *column_name);
-                    match *column_type_name {
-                        "NULL" => {
-                            laux::lua_push(state, ffi::LUA_TNIL);
-                        }
-                        "BOOL" | "BOOLEAN" => {
-                            let column_value = sqlx::decode::Decode::decode(value).unwrap_or(false);
-                            laux::lua_push(state, column_value);
-                        }
-                        "INT2" | "INT4" | "INT8" | "TINYINT" | "SMALLINT" | "INT" | "MEDIUMINT"
-                        | "BIGINT" | "INTEGER" => {
-                            let column_value: i64 =
-                                sqlx::decode::Decode::decode(value).unwrap_or(0);
-                            laux::lua_push(state, column_value);
-                        }
-                        "FLOAT4" | "FLOAT8" | "NUMERIC" | "FLOAT" | "DOUBLE" | "REAL" => {
-                            let column_value: f64 =
-                                sqlx::decode::Decode::decode(value).unwrap_or(0.0);
-                            laux::lua_push(state, column_value);
-                        }
-                        "TEXT" => {
-                            let column_value: &str =
-                                sqlx::decode::Decode::decode(value).unwrap_or("");
-                            laux::lua_push(state, column_value);
-                        }
-                        _ => {
-                            let column_value: &[u8] =
-                                sqlx::decode::Decode::decode(value).unwrap_or(b"");
-                            laux::lua_push(state, column_value);
-                        }
+                Ok(value) => match *column_type_name {
+                    "NULL" => {
+                        row_table.set(*column_name, ffi::LUA_TNIL);
                     }
-                    unsafe {
-                        ffi::lua_settable(state, -3);
+                    "BOOL" | "BOOLEAN" => {
+                        row_table.set(
+                            *column_name,
+                            sqlx::decode::Decode::decode(value).unwrap_or(false),
+                        );
                     }
-                }
+                    "INT2" | "INT4" | "INT8" | "TINYINT" | "SMALLINT" | "INT" | "MEDIUMINT"
+                    | "BIGINT" | "INTEGER" => {
+                        row_table.set(
+                            *column_name,
+                            sqlx::decode::Decode::decode(value).unwrap_or(0),
+                        );
+                    }
+                    "FLOAT4" | "FLOAT8" | "NUMERIC" | "FLOAT" | "DOUBLE" | "REAL" => {
+                        row_table.set(
+                            *column_name,
+                            sqlx::decode::Decode::decode(value).unwrap_or(0.0),
+                        );
+                    }
+                    "TEXT" => {
+                        row_table.set(
+                            *column_name,
+                            sqlx::decode::Decode::decode(value).unwrap_or(""),
+                        );
+                    }
+                    _ => {
+                        let column_value: &[u8] =
+                            sqlx::decode::Decode::decode(value).unwrap_or(b"");
+                        row_table.set(*column_name, column_value);
+                    }
+                },
                 Err(error) => {
                     laux::lua_push(state, false);
                     laux::lua_push(
@@ -450,9 +458,7 @@ where
             }
         }
         i += 1;
-        unsafe {
-            ffi::lua_seti(state, -2, i);
-        }
+        table.seti(i);
     }
     Ok(1)
 }
@@ -482,8 +488,8 @@ extern "C-unwind" fn find_connection(state: *mut ffi::lua_State) -> c_int {
 }
 
 extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
-    let p_as_isize: isize = laux::lua_get(state, 1);
-    let result = unsafe { Box::from_raw(p_as_isize as *mut DatabaseResult) };
+    laux::luaL_checkstack(state, 6, std::ptr::null());
+    let result = lua_into_userdata::<DatabaseResult>(state, 1);
 
     match *result {
         DatabaseResult::PgRows(rows) => {
@@ -555,23 +561,31 @@ extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
     1
 }
 
-/// # Safety
-///
-/// This function is unsafe because it dereferences a raw pointer `state`.
-/// The caller must ensure that `state` is a valid pointer to a `lua_State`
-/// and that it remains valid for the duration of the function call.
+extern "C-unwind" fn stats(state: *mut ffi::lua_State) -> c_int {
+    let table = LuaTable::new(state, 0, DATABASE_CONNECTIONSS.len());
+    DATABASE_CONNECTIONSS.iter().for_each(|pair| {
+        table.set(
+            pair.key().as_str(),
+            pair.value()
+                .counter
+                .load(std::sync::atomic::Ordering::Acquire),
+        );
+    });
+    1
+}
+
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub unsafe extern "C-unwind" fn luaopen_rust_sqlx(state: *mut ffi::lua_State) -> c_int {
+pub extern "C-unwind" fn luaopen_rust_sqlx(state: *mut ffi::lua_State) -> c_int {
     let l = [
         lreg!("connect", connect),
         lreg!("find_connection", find_connection),
         lreg!("decode", decode),
+        lreg!("stats", stats),
         lreg_null!(),
     ];
 
-    ffi::lua_createtable(state, 0, l.len() as c_int);
-    ffi::luaL_setfuncs(state, l.as_ptr(), 0);
+    luaL_newlib!(state, l);
 
     1
 }

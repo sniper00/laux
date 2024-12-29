@@ -143,6 +143,8 @@ moon.async(function()
     print_r(sqlitedb:query("CREATE TABLE test (id INTEGER PRIMARY KEY, content TEXT);"))
     print_r(sqlitedb:query("INSERT INTO test (content) VALUES ('Hello, World!');"))
     print_r(sqlitedb:query("SELECT * FROM test;"))
+
+    print_r(sqlx.stats()) -- Query sqlx left task count
 end)
 
 ```

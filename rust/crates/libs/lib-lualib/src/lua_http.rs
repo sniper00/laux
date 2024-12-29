@@ -1,8 +1,6 @@
 use lib_core::context::CONTEXT;
 use lib_lua::{
-    self, cstr,
-    ffi::{self, luaL_Reg},
-    laux, lreg, lreg_null, lua_rawsetfield,
+    self, cstr, ffi::{self, luaL_Reg}, laux::{self}, lreg, lreg_null, luaL_newlib, lua_rawsetfield
 };
 use reqwest::{header::HeaderMap, Method, Response};
 use std::{error::Error, ffi::c_int, str::FromStr};
@@ -161,6 +159,7 @@ extern "C-unwind" fn lua_http_form_urldecode(state: *mut ffi::lua_State) -> c_in
 }
 
 extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
+    laux::luaL_checkstack(state, 4, std::ptr::null());
     let p_as_isize: isize = laux::lua_get(state, 1);
     let response = unsafe { Box::from_raw(p_as_isize as *mut Response) };
 
@@ -199,7 +198,7 @@ extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
 /// and that it remains valid for the duration of the function call.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub unsafe extern "C-unwind" fn luaopen_rust_httpc(state: *mut ffi::lua_State) -> c_int {
+pub extern "C-unwind" fn luaopen_rust_httpc(state: *mut ffi::lua_State) -> c_int {
     let l = [
         lreg!("request", lua_http_request),
         lreg!("form_urlencode", lua_http_form_urlencode),
@@ -208,8 +207,7 @@ pub unsafe extern "C-unwind" fn luaopen_rust_httpc(state: *mut ffi::lua_State) -
         lreg_null!(),
     ];
 
-    ffi::lua_createtable(state, 0, l.len() as c_int);
-    ffi::luaL_setfuncs(state, l.as_ptr(), 0);
+    luaL_newlib!(state, l);
 
     1
 }

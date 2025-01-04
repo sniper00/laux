@@ -145,13 +145,11 @@ pub fn encode_one(
         LuaType::Nil => {
             writer.extend_from_slice(JSON_NULL.as_bytes());
         }
-        LuaType::LightUserData => {
-            unsafe {
-                if ffi::lua_touserdata(state, idx).is_null() {
-                    writer.extend_from_slice(JSON_NULL.as_bytes());
-                }
+        LuaType::LightUserData => unsafe {
+            if ffi::lua_touserdata(state, idx).is_null() {
+                writer.extend_from_slice(JSON_NULL.as_bytes());
             }
-        }
+        },
         ltype => {
             return Err(format!(
                 "json encode: unsupport value type :{}",

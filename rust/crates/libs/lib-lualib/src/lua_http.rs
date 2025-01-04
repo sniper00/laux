@@ -1,6 +1,9 @@
 use lib_core::context::CONTEXT;
 use lib_lua::{
-    self, cstr, ffi::{self, luaL_Reg}, laux::{self}, lreg, lreg_null, luaL_newlib, lua_rawsetfield
+    self, cstr,
+    ffi::{self, luaL_Reg},
+    laux::{self},
+    lreg, lreg_null, luaL_newlib, lua_rawsetfield,
 };
 use reqwest::{header::HeaderMap, Method, Response};
 use std::{error::Error, ffi::c_int, str::FromStr};
@@ -191,11 +194,6 @@ extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
     1
 }
 
-/// # Safety
-///
-/// This function is unsafe because it dereferences a raw pointer `state`.
-/// The caller must ensure that `state` is a valid pointer to a `lua_State`
-/// and that it remains valid for the duration of the function call.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C-unwind" fn luaopen_rust_httpc(state: *mut ffi::lua_State) -> c_int {

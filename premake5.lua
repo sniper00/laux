@@ -79,6 +79,9 @@ local function add_lua_module(dir, name, options )
             end
         filter {"system:macosx"}
             targetprefix ""
+            linkoptions {
+                "-undefined dynamic_lookup"
+            }
             if type(options.macosx)=="function" then
                 options.macosx()
             end
@@ -113,7 +116,7 @@ newaction {
     execute = function ()
         os.execute("git pull")
         os.execute("git submodule init")
-        os.execute("git submodule update")
+        os.execute("git submodule update --recursive")
         --- Build moon
         os.execute([[cd moon && premake5 build]])
 

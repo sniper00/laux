@@ -62,7 +62,7 @@ jobs:
         run: |
           brew install premake
       - name: Install rust
-        uses: dtolnay/rust-toolchain@1.83
+        uses: dtolnay/rust-toolchain@1.85
       - name: Build
         if: runner.os != 'Windows'
         run: |

@@ -5,11 +5,11 @@ use lib_lua::{
     laux::{self},
     lreg, lreg_null, luaL_newlib, lua_rawsetfield,
 };
-use reqwest::{header::HeaderMap, Method, Response};
+use reqwest::{header::HeaderMap, Method, Version};
 use std::{error::Error, ffi::c_int, str::FromStr};
 use url::form_urlencoded::{self};
 
-use crate::{moon_send, moon_send_bytes, PTYPE_ERROR};
+use crate::moon_send;
 
 struct HttpRequest {
     owner: u32,
@@ -20,6 +20,13 @@ struct HttpRequest {
     headers: HeaderMap,
     timeout: u64,
     proxy: String,
+}
+
+struct HttpResponse {
+    version: Version,
+    status_code: i32,
+    headers: HeaderMap,
+    body: bytes::Bytes,
 }
 
 fn version_to_string(version: &reqwest::Version) -> &str {
@@ -42,6 +49,13 @@ async fn http_request(req: HttpRequest, protocol_type: u8) -> Result<(), Box<dyn
         .body(req.body)
         .send()
         .await?;
+
+    let response = HttpResponse {
+        version: response.version(),
+        status_code: response.status().as_u16() as i32,
+        headers: response.headers().clone(),
+        body: response.bytes().await?,
+    };
 
     moon_send(protocol_type, req.owner, req.session, response);
 
@@ -106,12 +120,57 @@ extern "C-unwind" fn lua_http_request(state: *mut ffi::lua_State) -> c_int {
         let session = req.session;
         let owner = req.owner;
         if let Err(err) = http_request(req, protocol_type).await {
-            let err_string = err.to_string();
-            moon_send_bytes(PTYPE_ERROR, owner, session, err_string.as_bytes());
+            let response = HttpResponse {
+                version: Version::HTTP_11,
+                status_code: -1,
+                headers: HeaderMap::new(),
+                body: err.to_string().into(),
+            };
+            moon_send(protocol_type, owner, session, response);
         }
     });
 
     laux::lua_push(state, session);
+    1
+}
+
+extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
+    laux::luaL_checkstack(state, 4, std::ptr::null());
+    let p_as_isize: isize = laux::lua_get(state, 1);
+    let response = unsafe { Box::from_raw(p_as_isize as *mut HttpResponse) };
+
+    unsafe {
+        ffi::lua_createtable(state, 0, 6);
+        lua_rawsetfield!(
+            state,
+            -1,
+            "version",
+            laux::lua_push(state, version_to_string(&response.version))
+        );
+        lua_rawsetfield!(
+            state,
+            -1,
+            "status_code",
+            laux::lua_push(state, response.status_code as i32)
+        );
+
+        ffi::lua_pushstring(state, cstr!("headers"));
+        ffi::lua_createtable(state, 0, 16);
+
+        for (key, value) in response.headers.iter() {
+            laux::lua_push(state, key.to_string().to_lowercase());
+            laux::lua_push(state, value.to_str().unwrap_or("").trim());
+            ffi::lua_rawset(state, -3);
+        }
+        ffi::lua_rawset(state, -3);
+
+        lua_rawsetfield!(
+            state,
+            -1,
+            "body",
+            laux::lua_push(state, response.body.as_ref())
+        );
+    }
     1
 }
 
@@ -161,47 +220,14 @@ extern "C-unwind" fn lua_http_form_urldecode(state: *mut ffi::lua_State) -> c_in
     1
 }
 
-extern "C-unwind" fn decode(state: *mut ffi::lua_State) -> c_int {
-    laux::luaL_checkstack(state, 4, std::ptr::null());
-    let p_as_isize: isize = laux::lua_get(state, 1);
-    let response = unsafe { Box::from_raw(p_as_isize as *mut Response) };
-
-    unsafe {
-        ffi::lua_createtable(state, 0, 6);
-        lua_rawsetfield!(
-            state,
-            -1,
-            "version",
-            laux::lua_push(state, version_to_string(&response.version()))
-        );
-        lua_rawsetfield!(
-            state,
-            -1,
-            "status_code",
-            laux::lua_push(state, response.status().as_u16() as u32)
-        );
-
-        ffi::lua_pushstring(state, cstr!("headers"));
-        ffi::lua_createtable(state, 0, 16);
-
-        for (key, value) in response.headers().iter() {
-            laux::lua_push(state, key.to_string().to_lowercase());
-            laux::lua_push(state, value.to_str().unwrap_or("").trim());
-            ffi::lua_rawset(state, -3);
-        }
-        ffi::lua_rawset(state, -3);
-    }
-    1
-}
-
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C-unwind" fn luaopen_rust_httpc(state: *mut ffi::lua_State) -> c_int {
     let l = [
         lreg!("request", lua_http_request),
+        lreg!("decode", decode),
         lreg!("form_urlencode", lua_http_form_urlencode),
         lreg!("form_urldecode", lua_http_form_urldecode),
-        lreg!("decode", decode),
         lreg_null!(),
     ];
 
